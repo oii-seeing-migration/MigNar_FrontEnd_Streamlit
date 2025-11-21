@@ -1,195 +1,235 @@
+import os, json, re
 import pandas as pd
-import json
-import re
 import streamlit as st
-import ast
+from difflib import SequenceMatcher
 
-# -----------------------------
-# Load data
-# -----------------------------
-st.set_page_config(page_title="Narrative Highlighter", layout="wide")
+st.set_page_config(page_title="Narratives on Articles", layout="wide")
+
+DATA_PATH = os.getenv("MESO_SAMPLES_PATH") or "data/meso_samples.parquet"
 
 @st.cache_data(show_spinner=True)
-def load_data():
-    data_file_name = "GuardianCorpus_Vahid"
-    data_df = pd.read_csv(f"data/{data_file_name}_AI_Annotated.csv")
-    frame_meso_df = pd.read_excel("data/frame_meso_counts.xlsx")
-    frames_df = pd.read_excel("data/all_frames_counts.xlsx")
+def load_samples(path: str) -> pd.DataFrame:
+    if not os.path.exists(path):
+        return pd.DataFrame(columns=[
+            "source_table","article_id","theme","meso",
+            "title","body","url","pub_date","annotation_parsed","fragments"
+        ])
+    df = pd.read_parquet(path)
+    for c in ["theme","meso","title","body","annotation_parsed"]:
+        if c in df.columns:
+            df[c] = df[c].fillna("").astype(str)
+    return df
 
-    data_df.dropna(subset=['classification_Meso_Qwen3-32B'], inplace=True)
+def safe_json_load(s: str | None):
+    if s is None: return None
+    try: return json.loads(s)
+    except Exception: return None
 
-    def _parse_mesos(val):
-        if isinstance(val, dict):
-            return val
-        try:
-            d = ast.literal_eval(val)
-            if isinstance(d, dict):
-                return d
-        except Exception:
-            pass
-        return {"results": []}
-
-    data_df['classification_Meso_Qwen3-32B'] = data_df['classification_Meso_Qwen3-32B'].apply(_parse_mesos)
-    return data_df, frame_meso_df, frames_df
-
-
-# -----------------------------
-# Streamlit config
-# -----------------------------
-st.set_page_config(page_title="Narrative Highlighter", layout="wide")
-
-# -----------------------------
-# Sidebar navigation
-# -----------------------------
-st.sidebar.subheader("Navigation")
-try:
-    st.sidebar.page_link("navigation_page.py", label="Navigation Page", icon="🧭")
-    st.sidebar.page_link("pages/01_Narratives_on_Articles.py", label="Narratives on Articles", icon="📰")
-    st.sidebar.page_link("pages/02_Aggregative_Dashboard.py", label="Aggregative Dashboard", icon="📊")
-    st.sidebar.page_link("pages/03_Contrastive_Dashboard.py", label="Contrastive Dashboard", icon="⚖️")
-    st.sidebar.page_link("pages/04_Temporal_Dashboard.py", label="Temporal Dashboard", icon="⏱")
-except Exception:
-    nav_choice = st.sidebar.radio(
-        "Go to",
-        ["Navigation Page", "Narratives Dashboard", "Narratives on Articles"],
-        key="nav_radio"
-    )
-    target_map = {
-        "Navigation Page": "navigation_page.py",
-        "Narratives Dashboard": "pages/01_Narratives_Dashboard.py",
-        "Narratives on Articles": "pages/02_Narratives_on_Articles.py",
-    }
-    if target_map[nav_choice].endswith(".py"):
-        try:
-            st.switch_page(target_map[nav_choice])
-        except Exception:
-            st.sidebar.info("Use the built-in page selector (Streamlit multipage menu) to navigate.")
-
-# Load (spinner will appear now)
-data_df, frame_meso_df, frames_df = load_data()
-
-# -----------------------------
-# Sidebar filters
-# -----------------------------
-st.sidebar.header("Filters")
-
-# Clear filters button
-if st.sidebar.button("Clear filters"):
-    st.session_state['frame_sel'] = "(All)"
-    st.session_state['meso_sel'] = "(All)"
-
-# 1) Narrative frame
-frame_options = sorted(frames_df['narrative frame'].dropna().unique().tolist())
-frame_sel = st.sidebar.selectbox(
-    "Narrative Frame",
-    ["(All)"] + frame_options,
-    index=0,
-    key="frame_sel"
-)
-
-# 2) Meso narrative (dependent on frame)
-if st.session_state.get('frame_sel', "(All)") != "(All)":
-    meso_options = (
-        frame_meso_df[frame_meso_df['narrative frame'] == frame_sel]['meso narrative']
-        .dropna().unique().tolist()
-    )
-    meso_sel = st.sidebar.selectbox(
-        "Meso Narrative",
-        ["(All)"] + sorted(meso_options),
-        index=0,
-        key="meso_sel"
-    )
-else:
-    meso_sel = st.sidebar.selectbox(
-        "Meso Narrative",
-        ["(All)"],
-        index=0,
-        key="meso_sel"
-    )
-
-# -----------------------------
-# Filter articles based on selections
-# -----------------------------
-filtered_df = data_df
-
-def _has_frame_and_meso(row_frame_meso_dict, frame_val, meso_val):
-    results = row_frame_meso_dict.get("results", []) if isinstance(row_frame_meso_dict, dict) else []
-    return any(
-        (str(r.get('narrative frame')) == frame_val) and (str(r.get('meso narrative')) == meso_val)
-        for r in results if isinstance(r, dict)
-    )
-
-if frame_sel != "(All)" and meso_sel != "(All)":
-    filtered_df = data_df[
-        data_df['classification_Meso_Qwen3-32B'].apply(
-            lambda d: _has_frame_and_meso(d, frame_sel, meso_sel)
-        )
-    ]
-elif frame_sel != "(All)":
-    # Only frame selected: use comma-separated frames column to filter
-    def _row_has_frame(val, target):
-        frames = [f.strip() for f in str(val or "").split(",")]
-        return any(f.lower() == target.lower() for f in frames if f)
-    filtered_df = data_df[data_df['classification_FrameU_Qwen3-32B'].apply(lambda v: _row_has_frame(v, frame_sel))]
-
-# 3) Article title selector (based on filtered set)
-article_titles = filtered_df['title'].tolist()
-if not article_titles:
-    st.sidebar.warning("No matching articles.")
+df = load_samples(DATA_PATH)
+if df.empty:
+    st.error(f"No data at {DATA_PATH}")
     st.stop()
 
-selected_title = st.sidebar.selectbox("Select Article", article_titles)
-article = filtered_df[filtered_df['title'] == selected_title].iloc[0]
+# Sidebar filters (these only filter which article row you open; highlighting always uses full annotation_parsed)
+st.sidebar.header("Filters")
+source_label_map = {
+    "(All)": None,
+    "Articles": "articles",
+    "UK Parliament": "uk_parliament_contributions",
+    "US Congress": "us_congress_speech",
+}
+src_choice = st.sidebar.selectbox("Source", list(source_label_map.keys()), index=0)
+src_filter = source_label_map[src_choice]
+work_df = df if src_filter is None else df[df.source_table == src_filter]
 
-# -----------------------------
-# Page content
-# -----------------------------
-st.title(article['title'])
-if 'webUrl' in article:
-    st.markdown(f"[Read full article here]({article['webUrl']})", unsafe_allow_html=True)
+theme_list = sorted(t for t in work_df.theme.unique() if isinstance(t, str) and t.strip())
+theme_choice = st.sidebar.selectbox("Theme (sample dominant)", ["(All)"] + theme_list, index=0)
+if theme_choice != "(All)":
+    work_df = work_df[work_df.theme == theme_choice]
 
-# Parse labels from already-parsed dict
-parsed_dict = article['classification_Meso_Qwen3-32B']
-labels = parsed_dict.get("results", [])
-article_body = article['body']
+meso_list = sorted(m for m in work_df.meso.unique() if isinstance(m, str) and m.strip())
+meso_choice = st.sidebar.selectbox("Meso Narrative (sample)", ["(All)"] + meso_list, index=0)
+if meso_choice != "(All)":
+    work_df = work_df[work_df.meso == meso_choice]
 
-# Sort fragments by length to avoid nested replacements
-labels_sorted = sorted(labels, key=lambda x: len(x.get('text fragment', '')), reverse=True)
+if work_df.empty:
+    st.warning("No rows match filters.")
+    st.stop()
 
-def highlight_text(text, narrative_frame, meso_narrative):
-    tooltip = f"{narrative_frame}: {meso_narrative}"
-    return f"""<span class="highlight" title="{tooltip}">{text}</span>"""
+title_choice = st.sidebar.selectbox("Record", work_df.title.tolist())
+row = work_df[work_df.title == title_choice].iloc[0]
 
-for label in labels_sorted:
-    frag_text = label.get('text fragment')
-    if not frag_text:
+st.title(row.title)
+if row.url:
+    st.markdown(f"[Open Source Link]({row.url})")
+st.caption(f"Source: {row.source_table} | Date: {row.pub_date}")
+
+body_text = row.body or ""
+ann_raw = row.annotation_parsed or ""
+
+# 1) Parse ALL meso narratives and fragments from annotation_parsed
+def extract_all_fragments(ann_str: str):
+    arr = safe_json_load(ann_str) or []
+    out = []
+    if isinstance(arr, list):
+        for o in arr:
+            if not isinstance(o, dict): continue
+            frag = o.get("text fragment")
+            th   = o.get("narrative theme")
+            mn   = o.get("meso narrative")
+            if isinstance(frag, str) and frag.strip():
+                out.append({
+                    "fragment": frag.strip(),
+                    "theme": th if isinstance(th, str) else None,
+                    "meso": mn if isinstance(mn, str) else None
+                })
+    return out
+
+ann_frag_objs = extract_all_fragments(ann_raw)
+
+# 2) Robust matching to find each fragment in the body (highlight ALL found fragments)
+def normalize_text(t: str) -> str:
+    t = t.strip()
+    t = re.sub(r"[‘’]", "'", t)
+    t = re.sub(r"[“”]", '"', t)
+    t = t.replace("–","-").replace("—","-")
+    t = re.sub(r"\s+", " ", t)
+    return t
+
+def normalize_fragment(f: str) -> str:
+    f = normalize_text(f)
+    f = re.sub(r"(?:…|\.{3,})", "...", f)          # unify ellipsis
+    f = re.sub(r"(?:\.{3,}|…)$", "", f).strip()     # trim trailing ellipsis
+    f = re.sub(r"\b(\d+)\s*(%|percent|per\s*cent)\b", r"<<NUMPCT>>", f, flags=re.IGNORECASE)
+    return f
+
+def build_regex(nf: str):
+    parts = [p for p in nf.split("...") if p]
+    if not parts: return None
+    esc_parts = []
+    for p in parts:
+        p = normalize_text(p)
+        ep = re.escape(p)
+        ep = re.sub(r"\s+", r"[\\s,;:–—-]+", ep)
+        ep = ep.replace(re.escape("<<NUMPCT>>"), r"(?:\d+\s*(?:%|percent|per\s*cent))")
+        esc_parts.append(ep)
+    pattern = r".{0,280}?".join(esc_parts)
+    try:
+        return re.compile(pattern, re.IGNORECASE | re.DOTALL | re.MULTILINE)
+    except re.error:
+        return None
+
+def direct_search(body: str, frag: str):
+    idx = body.find(frag)
+    if idx >= 0: return (idx, idx + len(frag))
+    ib = body.lower().find(frag.lower())
+    if ib >= 0: return (ib, ib + len(frag))
+    return None
+
+def fuzzy_search(body: str, nf: str):
+    anchor = re.sub(r"^[^A-Za-z0-9]+", "", nf)[:8].lower()
+    if not anchor: return None
+    positions = [m.start() for m in re.finditer(re.escape(anchor), body.lower())]
+    if not positions: return None
+    target = re.sub(r"\s+", " ", nf.lower())
+    best = None
+    for pos in positions:
+        window = body[pos:pos + int(len(nf)*1.4)]
+        window_norm = re.sub(r"\s+", " ", window.lower())
+        ratio = SequenceMatcher(None, target, window_norm[:len(target)]).ratio()
+        if best is None or ratio > best[0]:
+            best = (ratio, pos, pos + len(nf))
+    if best and best[0] >= 0.80:
+        return (best[1], best[2])
+    return None
+
+# Find spans for every fragment; allow overlaps but merge bands; all narratives appear in tooltip
+matches = []  # (start, end, theme, meso)
+for obj in ann_frag_objs:
+    frag = obj["fragment"]
+    nf = normalize_fragment(frag)
+    span = direct_search(body_text, frag) or direct_search(body_text, nf)
+    if span is None:
+        rgx = build_regex(nf)
+        if rgx:
+            m = rgx.search(body_text)
+            if m: span = m.span()
+    if span is None:
+        span = fuzzy_search(body_text, nf)
+    if span is None:
         continue
-    frag = re.escape(frag_text)
-    replacement = highlight_text(
-        frag_text,
-        label.get('narrative frame', ''),
-        label.get('meso narrative', '')
-    )
-    article_body = re.sub(frag, replacement, article_body, count=1)
+    s, e = span
+    matches.append((s, e, obj["theme"], obj["meso"]))
 
-# -----------------------------
-# CSS for hover effect
-# -----------------------------
+def merge_overlaps(matches):
+    events = []
+    for s, e, th, mn in matches:
+        events.append((s, 1, th, mn))
+        events.append((e, -1, th, mn))
+    events.sort(key=lambda x: (x[0], -x[1]))
+    active = {}
+    segments = []
+    last_pos = None
+
+    def active_keys():
+        return {k for k, c in active.items() if c > 0}
+
+    for pos, kind, th, mn in events:
+        if last_pos is not None and pos > last_pos and active_keys():
+            segments.append((last_pos, pos, active_keys().copy()))
+        if kind == 1:
+            active[(th, mn)] = active.get((th, mn), 0) + 1
+        else:
+            if (th, mn) in active:
+                active[(th, mn)] -= 1
+                if active[(th, mn)] <= 0:
+                    active.pop((th, mn), None)
+        last_pos = pos
+    return segments
+
+segments = merge_overlaps(matches)
+
+def apply_highlights(text: str, segments):
+    if not segments: return text
+    segments.sort(key=lambda x: x[0])
+    out = []
+    last = 0
+    for s, e, th_mn_set in segments:
+        out.append(text[last:s])
+        labels = []
+        for th, mn in sorted(th_mn_set, key=lambda x: (str(x[0] or ""), str(x[1] or ""))):
+            labels.append(f"{th or '(n/a)'} — {mn or '(n/a)'}")
+        tip = " | ".join(labels)
+        out.append(f'<span class="highlight" title="{tip}">{text[s:e]}</span>')
+        last = e
+    out.append(text[last:])
+    return "".join(out)
+
+highlighted = apply_highlights(body_text, segments)
+
 st.markdown("""
 <style>
 .highlight {
-    background-color: #fffd75;
-    cursor: help;
-    border-radius: 3px;
-    padding: 2px;
+  background:#fff59d;
+  padding:2px 3px;
+  border-radius:3px;
+  cursor:help;
+  transition:background-color .15s;
 }
-.highlight:hover {
-    background-color: #ffeb3b;
-}
+.highlight:hover { background:#ffeb3b; }
+code, pre { white-space:pre-wrap; }
 </style>
 """, unsafe_allow_html=True)
 
-# -----------------------------
-# Display article with highlights
-# -----------------------------
-st.markdown(article_body, unsafe_allow_html=True)
+st.markdown(highlighted, unsafe_allow_html=True)
+
+# 3) Tabular view of ALL narratives from annotation_parsed (remove raw and summary)
+with st.expander("Narratives Metadata", expanded=False):
+    ann_rows = [{
+        "#": i,
+        "narrative theme": o.get("theme") if isinstance(o, dict) else o.get("narrative theme"),
+        "meso narrative": o.get("meso") if isinstance(o, dict) else o.get("meso narrative"),
+        "text fragment": o.get("fragment") if isinstance(o, dict) else o.get("text fragment"),
+    } for i, o in enumerate(ann_frag_objs)]
+    meta_df = pd.DataFrame(ann_rows, columns=["#","narrative theme","meso narrative","text fragment"])
+    st.dataframe(meta_df, use_container_width=True, hide_index=True)
