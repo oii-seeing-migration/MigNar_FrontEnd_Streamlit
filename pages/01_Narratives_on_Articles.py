@@ -34,71 +34,78 @@ if df.empty:
     st.error(f"No data found: {DATA_PATH}")
     st.stop()
 
-# Resolve column names (export may use dominant_theme & meso_narrative)
 THEME_COL = "theme" if "theme" in df.columns else ("dominant_theme" if "dominant_theme" in df.columns else None)
-MESO_COL  = "meso" if "meso" in df.columns else ("meso_narrative" if "meso_narrative" in df.columns else None)
+MESO_SAMPLE_COL = "meso" if "meso" in df.columns else ("meso_narrative" if "meso_narrative" in df.columns else None)
 
-# Normalize key text columns if present
-for c in [THEME_COL, MESO_COL, "title", "body"]:
+for c in [THEME_COL, MESO_SAMPLE_COL, "title", "body"]:
     if c and c in df.columns:
         df[c] = df[c].fillna("").astype(str)
 
-st.sidebar.header("Filters")
-source_options = ["(All)"] + sorted(df["source_table"].unique()) if "source_table" in df.columns else ["(All)"]
-src_choice = st.sidebar.selectbox("Source Table", source_options, index=0)
-if src_choice != "(All)" and "source_table" in df.columns:
-    work_df = df[df["source_table"] == src_choice]
-else:
-    work_df = df.copy()
+def gather_meso_set(row: pd.Series):
+    out = set()
+    for col in row.index:
+        if isinstance(col, str) and col.startswith("annotation_parsed_"):
+            arr = safe_json_load(row[col])
+            if isinstance(arr, list):
+                for obj in arr:
+                    if isinstance(obj, dict):
+                        mn = obj.get("meso narrative")
+                        if isinstance(mn, str) and mn.strip():
+                            out.add(mn.strip())
+    return out
 
-# Theme filter (sample-level theme column may be missing)
+df["_meso_all_set"] = df.apply(gather_meso_set, axis=1)
+
+st.sidebar.header("Filters")
+source_options = ["(All)"] + (sorted(df["source_table"].unique()) if "source_table" in df.columns else [])
+src_choice = st.sidebar.selectbox("Source Table", source_options, index=0)
+work_df = df if src_choice == "(All)" or "source_table" not in df.columns else df[df["source_table"] == src_choice]
+
 if THEME_COL:
     theme_vals = sorted(t for t in work_df[THEME_COL].unique() if isinstance(t, str) and t.strip())
     if pre_theme not in theme_vals:
         pre_theme = None
-    theme_choice = st.sidebar.selectbox("Theme", ["(All)"] + theme_vals,
+    theme_choice = st.sidebar.selectbox("Sample Theme", ["(All)"] + theme_vals,
                                         index=(theme_vals.index(pre_theme) + 1) if pre_theme else 0)
     if theme_choice != "(All)":
         work_df = work_df[work_df[THEME_COL] == theme_choice]
 else:
     theme_choice = "(All)"
 
-# Meso filter
-if MESO_COL:
-    meso_vals = sorted(m for m in work_df[MESO_COL].unique() if isinstance(m, str) and m.strip())
-    if pre_meso not in meso_vals:
-        pre_meso = None
-    meso_choice = st.sidebar.selectbox("Meso Narrative", ["(All)"] + meso_vals,
-                                       index=(meso_vals.index(pre_meso) + 1) if pre_meso else 0)
-    if meso_choice != "(All)":
-        work_df = work_df[work_df[MESO_COL] == meso_choice]
-else:
-    meso_choice = "(All)"
+all_meso_values = sorted({m for s in work_df["_meso_all_set"] for m in s})
+if pre_meso not in all_meso_values:
+    pre_meso = None
+meso_choice = st.sidebar.selectbox("Meso Narrative (any model)", ["(All)"] + all_meso_values,
+                                   index=(all_meso_values.index(pre_meso) + 1) if pre_meso else 0)
+if meso_choice != "(All)":
+    work_df = work_df[work_df["_meso_all_set"].apply(lambda s: meso_choice in s)]
+selected_meso = meso_choice if meso_choice != "(All)" else None
 
-# Sync query params
 def sync_params(th, mn):
     want = {}
-    if th != "(All)": want["theme"] = th
-    if mn != "(All)": want["meso"]  = mn
+    if th != "(All)":
+        want["theme"] = th
+    if mn != "(All)":
+        want["meso"] = mn
     changed = False
-    for k in ("theme","meso"):
+    for k in ("theme", "meso"):
         cur = _qp.get(k)
         new = want.get(k)
-        if (cur != new) or (cur and not new):
+        if cur != new:
             changed = True
     if changed:
-        for k in ("theme","meso"):
+        for k in ("theme", "meso"):
             if k in _qp:
                 del _qp[k]
         for k, v in want.items():
             _qp[k] = v
+
 sync_params(theme_choice, meso_choice)
 
 if work_df.empty:
     st.warning("No rows match filters.")
     st.stop()
 
-# Select record
 title_col = "title" if "title" in work_df.columns else None
 if not title_col:
     st.error("Missing title column.")
@@ -109,15 +116,12 @@ title_choice = st.sidebar.selectbox("Record", titles, index=0)
 row = work_df[work_df[title_col] == title_choice].iloc[0]
 
 st.title(row[title_col])
-if "url" in row and isinstance(row["url"], str) and row["url"]:
+if isinstance(row.get("url"), str) and row["url"]:
     st.markdown(f"[Open Source Link]({row['url']})")
-date_val = row.get("pub_date", "")
-src_tbl = row.get("source_table", "")
-st.caption(f"Source: {src_tbl} | Date: {date_val}")
+st.caption(f"Source: {row.get('source_table','')} | Date: {row.get('pub_date','')}")
 
 body_text = row.get("body", "") or ""
 
-# Collect all model annotations (annotation_parsed_<model>)
 def extract_all_model_narratives(r: pd.Series):
     out = []
     for col in r.index:
@@ -132,23 +136,23 @@ def extract_all_model_narratives(r: pd.Series):
                 frag = o.get("text fragment")
                 th = o.get("narrative theme")
                 mn = o.get("meso narrative")
-                if isinstance(frag, str) and frag.strip():
+                if isinstance(th, str) and th.strip() and isinstance(mn, str) and mn.strip():
                     out.append({
-                        "fragment": frag.strip(),
-                        "theme": th if isinstance(th, str) else None,
-                        "meso": mn if isinstance(mn, str) else None,
-                        "model": model_name
+                        "fragment": (frag.strip() if isinstance(frag, str) and frag.strip() else ""),
+                        "theme": th.strip(),
+                        "meso": mn.strip(),
+                        "model": model_name,
+                        "has_fragment": bool(isinstance(frag, str) and frag.strip())
                     })
     return out
 
-ann_frag_objs = extract_all_model_narratives(row)
+all_ann_frag_objs = extract_all_model_narratives(row)
 
-# Highlighting
 def normalize_text(t: str) -> str:
     t = t.strip()
     t = re.sub(r"[‘’]", "'", t)
     t = re.sub(r"[“”]", '"', t)
-    t = t.replace("–","-").replace("—","-")
+    t = t.replace("–", "-").replace("—", "-")
     return re.sub(r"\s+", " ", t)
 
 def normalize_fragment(f: str) -> str:
@@ -192,7 +196,7 @@ def fuzzy_search(body: str, nf: str):
     target = re.sub(r"\s+", " ", nf.lower())
     best = None
     for pos in positions:
-        window = body[pos:pos + int(len(nf)*1.4)]
+        window = body[pos:pos + int(len(nf) * 1.4)]
         window_norm = re.sub(r"\s+", " ", window.lower())
         ratio = SequenceMatcher(None, target, window_norm[:len(target)]).ratio()
         if not best or ratio > best[0]:
@@ -202,7 +206,9 @@ def fuzzy_search(body: str, nf: str):
     return None
 
 matches = []
-for obj in ann_frag_objs:
+for obj in all_ann_frag_objs:
+    if not obj["has_fragment"]:
+        continue
     frag = obj["fragment"]
     nf = normalize_fragment(frag)
     span = direct_search(body_text, frag) or direct_search(body_text, nf)
@@ -229,7 +235,7 @@ def merge_overlaps(matches):
     segs = []
     last = None
     def keys():
-        return {k for k,v in active.items() if v > 0}
+        return {k for k, v in active.items() if v > 0}
     for pos, kind, th, mn, mdl in events:
         if last is not None and pos > last and keys():
             segs.append((last, pos, keys().copy()))
@@ -240,7 +246,7 @@ def merge_overlaps(matches):
             if key in active:
                 active[key] -= 1
                 if active[key] <= 0:
-                    active.pop(key,None)
+                    active.pop(key, None)
         last = pos
     return segs
 
@@ -252,26 +258,27 @@ def apply_highlights(txt: str, segs):
     segs.sort(key=lambda x: x[0])
     out = []
     last = 0
-    for s,e,label_set in segs:
+    for s, e, label_set in segs:
         out.append(txt[last:s])
         labels = []
-        for th,mn,mdl in sorted(label_set, key=lambda x: (str(x[2] or ""), str(x[0] or ""), str(x[1] or ""))):
-            labels.append(f"{mdl or '(model)'} — {th or '(theme)'} — {mn or '(meso)'}")
+        meso_hit = False
+        for th, mn, mdl in sorted(label_set, key=lambda x: (str(x[2] or ""), str(x[0] or ""), str(x[1] or ""))):
+            labels.append(f"{mdl} — {th} — {mn}")
+            if selected_meso and mn == selected_meso:
+                meso_hit = True
         tip = " | ".join(labels)
-        out.append(f'<span class="highlight" title="{tip}">{txt[s:e]}</span>')
+        cls = "highlight-selected" if meso_hit else "highlight"
+        out.append(f'<span class="{cls}" title="{tip}">{txt[s:e]}</span>')
         last = e
     out.append(txt[last:])
     return "".join(out)
 
 st.markdown("""
 <style>
-.highlight {
-  background:#fff59d;
-  padding:2px 3px;
-  border-radius:3px;
-  cursor:help;
-}
+.highlight { background:#fff59d; padding:2px 3px; border-radius:3px; cursor:help; }
 .highlight:hover { background:#ffeb3b; }
+.highlight-selected { background:#80deea; padding:2px 3px; border-radius:3px; cursor:help; }
+.highlight-selected:hover { background:#4dd0e1; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -280,10 +287,12 @@ st.markdown(apply_highlights(body_text, segments), unsafe_allow_html=True)
 with st.expander("Narratives Metadata"):
     rows = [{
         "#": i,
+        "selected_meso_filter": (selected_meso == o["meso"]) if selected_meso else False,
         "model": o["model"],
         "narrative theme": o["theme"],
         "meso narrative": o["meso"],
-        "text fragment": o["fragment"],
-    } for i, o in enumerate(ann_frag_objs)]
+        "text fragment": (o["fragment"] if o["has_fragment"] else "[no fragment]"),
+        "fragment_present": o["has_fragment"]
+    } for i, o in enumerate(all_ann_frag_objs)]
     meta_df = pd.DataFrame(rows)
     st.dataframe(meta_df, use_container_width=True, hide_index=True)
