@@ -7,22 +7,14 @@ from supabase import create_client, Client
 st.set_page_config(page_title="Narrative Highlighter", layout="wide")
 
 # -----------------------------------------------------------------------------
-# Secrets (required)
+# Secrets (required) - Use publishable_key instead of anon_key
 # -----------------------------------------------------------------------------
-# .streamlit/secrets.toml
-# [supabase]
-# url = "https://<PROJECT>.supabase.co"
-# anon_key = "<SUPABASE_ANON_PUBLIC_KEY>"
-# [oauth]
-# provider = "google"
-# redirect_base = "http://localhost:8501"   # optional fallback; we also detect current origin
-
 SB_URL = st.secrets["supabase"]["url"]
-SB_ANON = st.secrets["supabase"]["anon_key"]
+SB_KEY = st.secrets["supabase"].get("publishable_key") or st.secrets["supabase"]["anon_key"]
 OAUTH_PROVIDER = (st.secrets.get("oauth") or {}).get("provider", "google")
 FALLBACK_REDIRECT_BASE = (st.secrets.get("oauth") or {}).get("redirect_base", "http://localhost:8501")
 
-supabase: Client = create_client(SB_URL, SB_ANON)
+supabase: Client = create_client(SB_URL, SB_KEY)
 
 # -----------------------------------------------------------------------------
 # Utilities
@@ -61,12 +53,11 @@ def set_user_from_jwt(jwt: str):
     return True
 
 def build_oauth_url(redirect_base: str) -> str:
+    """Build OAuth URL - Supabase defaults to implicit flow returning hash tokens"""
     authorize = f"{SB_URL}/auth/v1/authorize"
     params = {
         "provider": OAUTH_PROVIDER,
-        "redirect_to": redirect_base,  # must be in Supabase Auth → Redirect URLs
-        "response_type": "code",       # prefer code flow, but we also handle token hash
-        "prompt": "select_account",
+        "redirect_to": redirect_base,
     }
     return f"{authorize}?{urllib.parse.urlencode(params)}"
 
@@ -77,104 +68,112 @@ def sign_out():
         pass
     for k in ("user", "sb_session"):
         st.session_state.pop(k, None)
+    # Clear sessionStorage via JavaScript
+    st.markdown("""
+    <script>
+    sessionStorage.removeItem('supabase_auth_token');
+    sessionStorage.removeItem('supabase_refresh_token');
+    </script>
+    """, unsafe_allow_html=True)
     st.toast("Signed out.")
-
-# -----------------------------------------------------------------------------
-# Ensure redirect_to matches active origin (prevents 8501/8503 mismatch)
-# -----------------------------------------------------------------------------
-st.markdown("""
-<script>
-(function() {
-  try {
-    const url = new URL(window.location.href);
-    if (!url.searchParams.get("origin")) {
-      url.searchParams.set("origin", window.location.origin);
-      window.location.replace(url);
-    }
-  } catch (e) {}
-})();
-</script>
-""", unsafe_allow_html=True)
 
 CURRENT_ORIGIN = st.query_params.get("origin") or FALLBACK_REDIRECT_BASE
 REDIRECT_BASE = CURRENT_ORIGIN
 
 # -----------------------------------------------------------------------------
-# Handle code flow (?code=...)
-# -----------------------------------------------------------------------------
-auth_code = st.query_params.get("code")
-if auth_code and not st.session_state.get("user"):
-    try:
-        session = supabase.auth.exchange_code_for_session(auth_code)
-        user = session.user
-        meta = getattr(user, "user_metadata", {}) or {}
-        st.session_state["user"] = {
-            "id": user.id,
-            "email": user.email,
-            "name": meta.get("full_name") or meta.get("name") or user.email,
-            "avatar_url": meta.get("avatar_url"),
-        }
-        st.session_state["sb_session"] = {
-            "access_token": session.access_token,
-            "refresh_token": session.refresh_token,
-        }
-        st.toast("Signed in successfully.")
-    except Exception as e:
-        st.error("Authentication failed during code exchange.")
-        st.caption(str(e))
-    # Clean URL and rerun
-    if "code" in st.query_params:
-        del st.query_params["code"]
-    st.rerun()
-
-# -----------------------------------------------------------------------------
-# Handle implicit/token flow (#access_token=... or #id_token=...)
-# Move tokens from hash to query, then set session from JWT locally.
+# CRITICAL: Handle hash-based OAuth tokens from Supabase
+# This JavaScript runs first and converts hash tokens to query params
 # -----------------------------------------------------------------------------
 st.markdown("""
 <script>
 (function() {
-  try {
-    if (window.location.hash && window.location.hash.length > 1) {
-      const hash = window.location.hash.substring(1);
-      const params = new URLSearchParams(hash);
-      if (params.has("access_token") || params.has("id_token")) {
-        const qs = new URLSearchParams(window.location.search);
-        ["access_token","id_token","refresh_token","expires_in","expires_at","token_type","provider_token"]
-          .forEach(k => { if (params.has(k)) qs.set(k, params.get(k)); });
-        // Remove hash and replace with query params
-        const newUrl = window.location.pathname + "?" + qs.toString();
-        window.location.replace(newUrl);
-        // Force immediate stop - don't let script continue
-        throw new Error("Redirecting");
-      }
+    // Step 1: If URL has hash with access_token, store in sessionStorage and redirect
+    if (window.location.hash && window.location.hash.includes('access_token')) {
+        const hash = window.location.hash.substring(1);
+        const hashParams = new URLSearchParams(hash);
+        
+        if (hashParams.has("access_token")) {
+            sessionStorage.setItem('supabase_auth_token', hashParams.get("access_token"));
+            sessionStorage.setItem('supabase_refresh_token', hashParams.get("refresh_token") || "");
+            
+            // Redirect to clean URL with callback flag
+            window.location.replace(window.location.pathname + "?auth_callback=true");
+        }
     }
-  } catch (e) {}
+    
+    // Step 2: If returning from callback and tokens exist in sessionStorage
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('auth_callback')) {
+        const token = sessionStorage.getItem('supabase_auth_token');
+        const refresh = sessionStorage.getItem('supabase_refresh_token');
+        
+        if (token) {
+            // Clear sessionStorage
+            sessionStorage.removeItem('supabase_auth_token');
+            sessionStorage.removeItem('supabase_refresh_token');
+            
+            // Add tokens to URL query params
+            const newParams = new URLSearchParams(window.location.search);
+            newParams.delete('auth_callback');
+            newParams.set('access_token', token);
+            if (refresh) newParams.set('refresh_token', refresh);
+            
+            window.location.replace(window.location.pathname + "?" + newParams.toString());
+        }
+    }
 })();
 </script>
 """, unsafe_allow_html=True)
 
-jwt_token = st.query_params.get("access_token") or st.query_params.get("id_token")
+# -----------------------------------------------------------------------------
+# Handle implicit/token flow (tokens in query params after JavaScript processing)
+# -----------------------------------------------------------------------------
+jwt_token = st.query_params.get("access_token")
 refresh_token = st.query_params.get("refresh_token")
+
 if jwt_token and not st.session_state.get("user"):
     if set_user_from_jwt(jwt_token):
         st.session_state["sb_session"] = {
             "access_token": jwt_token,
             "refresh_token": refresh_token,
         }
-        st.toast("Signed in successfully.")
-        # Clean URL and rerun
-        for k in ("access_token","id_token","refresh_token","expires_in","expires_at","token_type","provider_token"):
+        st.toast("✅ Signed in successfully!")
+        # Clean URL
+        for k in ("access_token","refresh_token","expires_in","expires_at","token_type","provider_token"):
             if k in st.query_params:
                 del st.query_params[k]
         st.rerun()
     else:
         st.error("Could not parse login token.")
-        # Clean URL and rerun
-        for k in ("access_token","id_token","refresh_token","expires_in","expires_at","token_type","provider_token"):
+        for k in ("access_token","refresh_token"):
             if k in st.query_params:
                 del st.query_params[k]
-        st.rerun()
+
+# -----------------------------------------------------------------------------
+# Handle code flow (?code=...) - for PKCE if enabled
+# -----------------------------------------------------------------------------
+auth_code = st.query_params.get("code")
+if auth_code and not st.session_state.get("user"):
+    try:
+        response = supabase.auth.exchange_code_for_session({"auth_code": auth_code})
+        if response and response.user:
+            st.session_state["user"] = {
+                "id": response.user.id,
+                "email": response.user.email,
+                "name": (response.user.user_metadata or {}).get("full_name") or response.user.email,
+                "avatar_url": (response.user.user_metadata or {}).get("avatar_url"),
+            }
+            st.session_state["sb_session"] = {
+                "access_token": response.session.access_token,
+                "refresh_token": response.session.refresh_token,
+            }
+            st.toast("✅ Signed in successfully.")
+            del st.query_params["code"]
+            st.rerun()
+    except Exception as e:
+        st.error(f"Authentication failed: {e}")
+        if "code" in st.query_params:
+            del st.query_params["code"]
 
 # -----------------------------------------------------------------------------
 # UI: header with greeting and sign-out
@@ -225,16 +224,13 @@ with st.container():
                 st.rerun()
         else:
             if st.button("Sign in with Google", use_container_width=False):
-                # Clear stale params and redirect to Supabase authorize
-                for k in ("origin","code","access_token","id_token","refresh_token","expires_in","expires_at","token_type","provider_token"):
-                    if k in st.query_params:
-                        del st.query_params[k]
                 oauth_url = build_oauth_url(REDIRECT_BASE)
                 st.markdown(f'<meta http-equiv="refresh" content="0; url={oauth_url}">', unsafe_allow_html=True)
                 st.markdown(f"[Click here if not redirected]({oauth_url})")
                 st.stop()
         st.markdown('</div>', unsafe_allow_html=True)
 
+# Rest of your UI code stays the same...
 # -----------------------------------------------------------------------------
 # Sidebar navigation
 # -----------------------------------------------------------------------------
