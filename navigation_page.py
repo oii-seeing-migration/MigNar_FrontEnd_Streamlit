@@ -142,9 +142,11 @@ st.markdown("""
         const qs = new URLSearchParams(window.location.search);
         ["access_token","id_token","refresh_token","expires_in","expires_at","token_type","provider_token"]
           .forEach(k => { if (params.has(k)) qs.set(k, params.get(k)); });
+        // Remove hash and replace with query params
         const newUrl = window.location.pathname + "?" + qs.toString();
-        window.history.replaceState({}, "", newUrl);
-        window.location.reload();
+        window.location.replace(newUrl);
+        // Force immediate stop - don't let script continue
+        throw new Error("Redirecting");
       }
     }
   } catch (e) {}
@@ -161,13 +163,18 @@ if jwt_token and not st.session_state.get("user"):
             "refresh_token": refresh_token,
         }
         st.toast("Signed in successfully.")
+        # Clean URL and rerun
+        for k in ("access_token","id_token","refresh_token","expires_in","expires_at","token_type","provider_token"):
+            if k in st.query_params:
+                del st.query_params[k]
+        st.rerun()
     else:
         st.error("Could not parse login token.")
-    # Clean URL and rerun
-    for k in ("access_token","id_token","refresh_token","expires_in","expires_at","token_type","provider_token"):
-        if k in st.query_params:
-            del st.query_params[k]
-    st.rerun()
+        # Clean URL and rerun
+        for k in ("access_token","id_token","refresh_token","expires_in","expires_at","token_type","provider_token"):
+            if k in st.query_params:
+                del st.query_params[k]
+        st.rerun()
 
 # -----------------------------------------------------------------------------
 # UI: header with greeting and sign-out
