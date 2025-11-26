@@ -179,8 +179,8 @@ for theme in visible_themes_sorted:
         unsafe_allow_html=True
     )
 
-    header = st.columns([0.18, 0.57, 0.15, 0.10])
-    with header[0]: link_button(theme, None, "Open Theme")
+    header = st.columns([0.18, 0.57, 0.15, 0.20])
+    with header[0]: link_button(theme, None, "See on Articles")
     with header[1]: st.markdown("<small><strong>Meso Narratives</strong></small>", unsafe_allow_html=True)
     with header[2]: st.markdown("<small><strong>Count</strong></small>", unsafe_allow_html=True)
     with header[3]: st.markdown("<small><strong>Action</strong></small>", unsafe_allow_html=True)
@@ -189,7 +189,7 @@ for theme in visible_themes_sorted:
         cnt = counts.get((theme, mn), 0)
         is_new = (mn in extras) or new_theme or (mn not in base_list and not in_tax)
         row_bg = "#fafafa" if not is_new else "#fff8e1"
-        row = st.columns([0.18, 0.57, 0.15, 0.10])
+        row = st.columns([0.18, 0.57, 0.15, 0.20])
         with row[0]: st.write("")
         with row[1]:
             new_tag = " <em style='color:#c77;'>(NEW)</em>" if is_new else ""
@@ -200,7 +200,7 @@ for theme in visible_themes_sorted:
         with row[2]:
             st.markdown(f"<span style='font-size:0.85rem'>{cnt}</span>", unsafe_allow_html=True)
         with row[3]:
-            link_button(theme, mn, "Open")
+            link_button(theme, mn, "See on Articles")
 
 st.markdown("---")
 n_tax_themes = len(taxonomy)
