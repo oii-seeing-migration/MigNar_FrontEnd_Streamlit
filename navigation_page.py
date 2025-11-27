@@ -4,7 +4,7 @@ import base64
 import json
 import urllib.parse
 
-st.set_page_config(page_title="Google Sign In", layout="wide", page_icon="🔐")
+st.set_page_config(page_title="Sign In", layout="wide", page_icon="🔐")
 
 # -----------------------------------------------------------------------------
 # Config
@@ -18,36 +18,14 @@ supabase: Client = create_client(SB_URL, SB_KEY)
 # Get the correct redirect URL based on environment
 # -----------------------------------------------------------------------------
 def get_redirect_url():
-    """
-    Returns the appropriate redirect URL based on the environment.
-    Priority:
-    1. Custom domain from secrets (if set)
-    2. Streamlit Cloud URL (if running on cloud)
-    3. Localhost (for local development)
-    """
-    # Check if custom redirect URL is set in secrets
     if "redirect_url" in st.secrets.get("app", {}):
         return st.secrets["app"]["redirect_url"]
-    
-    # Try to detect Streamlit Cloud environment
-    try:
-        # Streamlit Cloud sets specific headers/environment variables
-        if st.runtime.exists():
-            # Get the current URL from browser
-            # This is a workaround - we'll use the app name from secrets
-            app_name = st.secrets.get("app", {}).get("name", "")
-            if app_name:
-                return f"https://{app_name}.streamlit.app"
-    except:
-        pass
-    
-    # Default to localhost for local development
     return "http://localhost:8501"
 
 REDIRECT_URL = get_redirect_url()
 
 # -----------------------------------------------------------------------------
-# Initialize session state ONCE at the very beginning
+# Initialize session state
 # -----------------------------------------------------------------------------
 if "user" not in st.session_state:
     st.session_state.user = None
@@ -59,7 +37,7 @@ if "auth_processed" not in st.session_state:
     st.session_state.auth_processed = False
 
 # -----------------------------------------------------------------------------
-# Helper to decode JWT without verification
+# Helper to decode JWT
 # -----------------------------------------------------------------------------
 def base64url_decode(data: str) -> bytes:
     padding = '=' * ((4 - len(data) % 4) % 4)
@@ -76,12 +54,11 @@ def decode_jwt(token: str) -> dict:
         return {}
 
 # -----------------------------------------------------------------------------
-# Handle tokens from query params - ONLY ONCE
+# Handle tokens from query params
 # -----------------------------------------------------------------------------
 access_token = st.query_params.get("access_token")
 refresh_token = st.query_params.get("refresh_token")
 
-# Only process if we have a token AND haven't processed it yet
 if access_token and not st.session_state.auth_processed:
     with st.spinner("🔄 Processing login..."):
         try:
@@ -89,13 +66,17 @@ if access_token and not st.session_state.auth_processed:
             
             if payload and payload.get("email"):
                 user_metadata = payload.get("user_metadata", {})
+                app_metadata = payload.get("app_metadata", {})
                 
-                # Update session state
+                # Get provider info
+                provider = app_metadata.get("provider", "unknown")
+                
                 st.session_state.user = {
                     "id": payload.get("sub"),
                     "email": payload.get("email"),
-                    "name": user_metadata.get("full_name", payload.get("email")),
-                    "avatar_url": user_metadata.get("avatar_url", user_metadata.get("picture")),
+                    "name": user_metadata.get("full_name") or user_metadata.get("name") or user_metadata.get("user_name") or payload.get("email"),
+                    "avatar_url": user_metadata.get("avatar_url") or user_metadata.get("picture"),
+                    "provider": provider,
                 }
                 st.session_state.session = {
                     "access_token": access_token,
@@ -118,7 +99,7 @@ if access_token and not st.session_state.auth_processed:
             st.session_state.auth_processed = True
 
 # -----------------------------------------------------------------------------
-# Display UI based on authentication state
+# Display UI
 # -----------------------------------------------------------------------------
 user = st.session_state.user
 
@@ -141,6 +122,11 @@ if user:
     with col2:
         st.markdown(f"### {user['name']}")
         st.markdown(f"📧 {user['email']}")
+        
+        # Show provider badge
+        provider = user.get("provider", "unknown")
+        provider_emoji = {"google": "🔵", "github": "⚫"}.get(provider, "🔐")
+        st.markdown(f"**Signed in with:** {provider_emoji} {provider.title()}")
     
     st.divider()
     
@@ -164,48 +150,84 @@ if user:
 
 else:
     # Not logged in state
-    st.title("🔐 Google Sign In")
+    st.title("🔐 Sign In")
     st.markdown("### Welcome! Please sign in to continue")
     
     st.divider()
     
-    # Build OAuth URL with dynamic redirect
-    authorize_url = f"{SB_URL}/auth/v1/authorize"
-    params = {
-        "provider": "google",
-        "redirect_to": REDIRECT_URL,
-        "flow_type": "implicit"
-    }
-    oauth_url = f"{authorize_url}?{urllib.parse.urlencode(params)}"
+    # Build OAuth URLs
+    def get_oauth_url(provider: str) -> str:
+        authorize_url = f"{SB_URL}/auth/v1/authorize"
+        params = {
+            "provider": provider,
+            "redirect_to": REDIRECT_URL,
+            "flow_type": "implicit"
+        }
+        return f"{authorize_url}?{urllib.parse.urlencode(params)}"
     
-    # Primary sign-in method
+    google_oauth_url = get_oauth_url("google")
+    github_oauth_url = get_oauth_url("github")
+    
+    # Primary sign-in methods
     st.subheader("🚀 Quick Sign In")
-    st.info("Click the button below to sign in with your Google account")
     
-    st.markdown(f"""
-    <a href="{oauth_url}" target="_self">
-        <button style="
-            background-color: #4285F4;
-            color: white;
-            padding: 14px 32px;
-            font-size: 16px;
-            font-weight: 500;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            gap: 12px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            transition: background-color 0.3s;
-        "
-        onmouseover="this.style.backgroundColor='#357ae8'"
-        onmouseout="this.style.backgroundColor='#4285F4'">
-            <svg width="20" height="20" xmlns="http://www.w3.org/2000/svg"><g fill="none" fill-rule="evenodd"><path d="M17.6 9.2l-.1-1.8H9v3.4h4.8C13.6 12 13 13 12 13.6v2.2h3a8.8 8.8 0 0 0 2.6-6.6z" fill="#FFF"/><path d="M9 18c2.4 0 4.5-.8 6-2.2l-3-2.2a5.4 5.4 0 0 1-8-2.9H1V13a9 9 0 0 0 8 5z" fill="#FFF"/><path d="M4 10.7a5.4 5.4 0 0 1 0-3.4V5H1a9 9 0 0 0 0 8l3-2.3z" fill="#FFF"/><path d="M9 3.6c1.3 0 2.5.4 3.4 1.3L15 2.3A9 9 0 0 0 1 5l3 2.4a5.4 5.4 0 0 1 5-3.7z" fill="#FFF"/></g></svg>
-            Sign in with Google
-        </button>
-    </a>
-    """, unsafe_allow_html=True)
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown(f"""
+        <a href="{google_oauth_url}" target="_self">
+            <button style="
+                background-color: #4285F4;
+                color: white;
+                padding: 14px 24px;
+                font-size: 16px;
+                font-weight: 500;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 12px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                transition: background-color 0.3s;
+                width: 100%;
+            "
+            onmouseover="this.style.backgroundColor='#357ae8'"
+            onmouseout="this.style.backgroundColor='#4285F4'">
+                <svg width="20" height="20" xmlns="http://www.w3.org/2000/svg"><g fill="none" fill-rule="evenodd"><path d="M17.6 9.2l-.1-1.8H9v3.4h4.8C13.6 12 13 13 12 13.6v2.2h3a8.8 8.8 0 0 0 2.6-6.6z" fill="#FFF"/><path d="M9 18c2.4 0 4.5-.8 6-2.2l-3-2.2a5.4 5.4 0 0 1-8-2.9H1V13a9 9 0 0 0 8 5z" fill="#FFF"/><path d="M4 10.7a5.4 5.4 0 0 1 0-3.4V5H1a9 9 0 0 0 0 8l3-2.3z" fill="#FFF"/><path d="M9 3.6c1.3 0 2.5.4 3.4 1.3L15 2.3A9 9 0 0 0 1 5l3 2.4a5.4 5.4 0 0 1 5-3.7z" fill="#FFF"/></g></svg>
+                Google
+            </button>
+        </a>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+        <a href="{github_oauth_url}" target="_self">
+            <button style="
+                background-color: #24292e;
+                color: white;
+                padding: 14px 24px;
+                font-size: 16px;
+                font-weight: 500;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 12px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                transition: background-color 0.3s;
+                width: 100%;
+            "
+            onmouseover="this.style.backgroundColor='#1a1e22'"
+            onmouseout="this.style.backgroundColor='#24292e'">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                GitHub
+            </button>
+        </a>
+        """, unsafe_allow_html=True)
     
     st.divider()
     
@@ -213,20 +235,21 @@ else:
     st.subheader("🔧 Alternative: Manual Sign In")
     
     st.warning("""
-    **If the button above doesn't redirect you automatically**, use this manual method:
+    **If the buttons above don't work**, use this manual method:
     
-    1. Click the link below to open Google Sign In
-    2. Sign in with your Google account
-    3. After signing in, you'll be redirected back - **copy the complete URL** from your browser's address bar
-    4. Paste the URL in the text box below
+    1. Click one of the links below to open sign in
+    2. After signing in, **copy the complete URL** from your browser
+    3. Paste it in the text box below
     """)
     
-    st.markdown(f"**Step 1:** [Open Google Sign In →]({oauth_url})")
-    
-    st.markdown("**Step 2 & 3:** Paste the redirect URL here:")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown(f"[Open Google Sign In →]({google_oauth_url})")
+    with col2:
+        st.markdown(f"[Open GitHub Sign In →]({github_oauth_url})")
     
     manual_url = st.text_input(
-        "Complete URL from browser:",
+        "Paste the redirect URL here:",
         placeholder=f"{REDIRECT_URL}/#access_token=eyJhbGc...",
         help="The URL should contain '#access_token=' after you sign in",
         label_visibility="collapsed"
@@ -247,14 +270,15 @@ else:
                     st.markdown(f'<meta http-equiv="refresh" content="0;url={new_url}">', unsafe_allow_html=True)
                     st.info(f"If you're not redirected, [click here]({new_url})")
             except Exception as e:
-                st.error(f"❌ Error parsing URL: {e}")
-                st.info("Please make sure you copied the complete URL including the '#access_token=...' part")
+                st.error(f"❌ Error: {e}")
         else:
-            st.warning("⚠️ The URL doesn't contain an access token. Please sign in first using the link above.")
+            st.warning("⚠️ Please sign in first using one of the links above.")
 
     # Debug section
     with st.expander("🛠️ Developer Info"):
         st.write("**Redirect URL:**", REDIRECT_URL)
+        st.write("**Google OAuth:**", google_oauth_url)
+        st.write("**GitHub OAuth:**", github_oauth_url)
         st.write("**Query Params:**", dict(st.query_params))
         st.write("**Session State:**")
         st.json({
