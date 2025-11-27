@@ -24,7 +24,7 @@ def jwt_payload(token: str) -> dict | None:
         return None
 
 def bind_auth_from_session() -> tuple[bool, str | None]:
-    sess = st.session_state.get("sb_session") or {}
+    sess = st.session_state.get("session") or {}
     at = sess.get("access_token")
     rt = sess.get("refresh_token")
     if not at:
@@ -71,9 +71,12 @@ st.markdown("""
 .theme-right { font-size:0.9rem; opacity:0.8; }
 .narr-row { padding:8px 10px; border-radius:8px; display:flex; align-items:center; gap:10px; }
 .narr-text { flex:1; }
-.narr-count { width:90px; text-align:right; font-size:0.9rem; opacity:0.8; }
+.narr-count { text-align:right; font-size:0.9rem; opacity:0.8; }
 .login-banner { background:#e3f2fd; border:1px solid #90caf9; padding:8px 12px; border-radius:8px; margin-bottom:10px; }
 .login-banner.logged { background:#e8f5e9; border-color:#81c784; }
+
+/* Fix alignment - remove extra padding from streamlit columns */
+div[data-testid="column"] { padding-left: 0 !important; padding-right: 0 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -83,7 +86,8 @@ TAXON_DIR  = os.path.join(os.path.dirname(__file__), "../taxonomy")
 NEW_MIN_COUNT = 3
 ARTICLES_SLUG = "Narratives_on_Articles"
 
-ANNOT_OPTIONS = ["duplicate narrative", "too specific", "too generic", "good"]
+ANNOT_OPTIONS = ["", "duplicate narrative", "too specific", "too generic", "good"]
+REAL_OPTIONS = set(ANNOT_OPTIONS[1:])
 ANNOT_TABLE = "taxonomy_annotations"
 
 # ── Data loaders ───────────────────────────────────────────────────────────────
@@ -139,7 +143,7 @@ def load_taxonomy(revision: int) -> dict[str, list[str]]:
             out[str(k)] = [str(x) for x in v if isinstance(x, str)]
     return out
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=10)
 def fetch_user_annotations(user_id: str | None, revision: int) -> dict[tuple[str,str], str]:
     if not user_id:
         return {}
@@ -181,11 +185,12 @@ if not revs:
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 st.sidebar.header("Controls")
 if USER and AUTH_UID and BIND_OK:
-    st.sidebar.success(f"Signed in as {USER.get('name') or USER.get('email')} (…{str(AUTH_UID)[-6:]})")
+    st.sidebar.success(f"✅ Signed in as **{USER.get('name') or USER.get('email')}**")
+    st.sidebar.caption(f"User ID: ...{str(AUTH_UID)[-6:]}")
 elif USER:
-    st.sidebar.warning("Signed in, but DB session not bound. Refresh.")
+    st.sidebar.warning("⚠️ Signed in, but DB session not bound. Refresh page.")
 else:
-    st.sidebar.warning("You are not signed in. Selections disabled.")
+    st.sidebar.warning("🔐 Not signed in. [Go to Sign In page](/) to annotate.")
 
 chosen_rev = st.sidebar.selectbox("Revision Version", revs, index=len(revs)-1)
 taxonomy = load_taxonomy(chosen_rev)
@@ -199,11 +204,11 @@ model_filter = None if model_choice == "(All models)" else model_choice
 
 # ── Login banner ───────────────────────────────────────────────────────────────
 if USER and AUTH_UID and BIND_OK:
-    st.markdown(f"<div class='login-banner logged'>✅ Signed in as <strong>{USER.get('name') or USER.get('email')}</strong></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='login-banner logged'>✅ Signed in as <strong>{USER.get('name') or USER.get('email')}</strong> — Annotations will be saved</div>", unsafe_allow_html=True)
 elif USER:
-    st.markdown("<div class='login-banner'>⚠️ Signed in, but database session not fully bound. Refresh if saves fail.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='login-banner'>⚠️ Signed in, but database session not fully bound. Try refreshing the page if saves fail.</div>", unsafe_allow_html=True)
 else:
-    st.markdown("<div class='login-banner'>🔐 You are not signed in. Sign in to annotate taxonomy items.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='login-banner'>🔐 You are not signed in. <a href='/'>Sign in</a> to save your annotations.</div>", unsafe_allow_html=True)
 
 # ── Filter and aggregate ───────────────────────────────────────────────────────
 filtered = meso_df[meso_df.version == chosen_rev] if "version" in meso_df.columns else meso_df.copy()
@@ -243,7 +248,7 @@ for th in visible_themes:
 visible_themes_sorted = sorted(visible_themes, key=lambda t: theme_totals.get(t, 0), reverse=True)
 
 st.title(f"Meso Narratives Taxonomy (Revision {chosen_rev})")
-st.caption("Open articles view for context; set a judgment to save your feedback.")
+st.caption("Review narratives, annotate quality, and explore articles. Your annotations are saved automatically.")
 
 prefill_map = fetch_user_annotations(AUTH_UID if AUTH_UID else (USER.get("id") if USER else None), chosen_rev)
 
@@ -253,7 +258,7 @@ def articles_link(theme: str | None = None, meso: str | None = None) -> str:
     if meso: params.append("meso=" + urllib.parse.quote(meso))
     return f"/{ARTICLES_SLUG}" + (("?" + "&".join(params)) if params else "")
 
-def link_button(theme: str, meso: str | None = None, label: str = "See on Articles"):
+def link_button(theme: str, meso: str | None = None, label: str = "View on Articles"):
     st.markdown(f"<a class='open-btn' href='{articles_link(theme, meso)}' target='_blank' rel='noopener'>{label}</a>", unsafe_allow_html=True)
 
 for theme in visible_themes_sorted:
@@ -271,10 +276,14 @@ for theme in visible_themes_sorted:
     )
 
     header = st.columns([0.18, 0.52, 0.15, 0.15])
-    with header[0]: link_button(theme, None, "See on Articles")
-    with header[1]: st.markdown("<small><strong>Meso Narratives</strong></small>", unsafe_allow_html=True)
-    with header[2]: st.markdown("<small><strong>Count</strong></small>", unsafe_allow_html=True)
-    with header[3]: st.markdown("<small><strong>Judgement</strong></small>", unsafe_allow_html=True)
+    with header[0]: 
+        link_button(theme, None, "View on Articles")
+    with header[1]: 
+        st.markdown("<small style='padding-left:10px;'><strong>Meso Narratives</strong></small>", unsafe_allow_html=True)
+    with header[2]: 
+        st.markdown("<small style='text-align:right; display:block;'><strong>Count</strong></small>", unsafe_allow_html=True)
+    with header[3]: 
+        st.markdown("<small style='text-align:center; display:block;'><strong>Quality</strong></small>", unsafe_allow_html=True)
 
     for mn in base_list + extras:
         cnt = counts.get((theme, mn), 0)
@@ -286,42 +295,59 @@ for theme in visible_themes_sorted:
 
         row = st.columns([0.18, 0.52, 0.15, 0.15])
         with row[0]:
-            link_button(theme, mn, "Open here")
+            link_button(theme, mn, "View on Articles")
         with row[1]:
             new_tag = " <em style='color:#c77;'>(NEW)</em>" if is_new else ""
             st.markdown(f"<div class='narr-row' style='background:{row_bg};'><span class='narr-text'>{mn}{new_tag}</span></div>", unsafe_allow_html=True)
         with row[2]:
-            st.markdown(f"<div class='narr-count'>{cnt}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align:right; padding:8px 10px;'><span class='narr-count'>{cnt}</span></div>", unsafe_allow_html=True)
         with row[3]:
             if USER and AUTH_UID and BIND_OK:
+                # Determine default index (0 = blank) or previously saved label
+                idx = (ANNOT_OPTIONS.index(pre) if pre in ANNOT_OPTIONS else 0)
                 choice = st.selectbox(
-                    "judgement",
+                    "quality",
                     ANNOT_OPTIONS,
-                    index=(ANNOT_OPTIONS.index(pre) if pre in ANNOT_OPTIONS else 3),
+                    index=idx,
                     key=key_sel,
                     label_visibility="collapsed",
-                    help="Saved automatically"
+                    format_func=lambda v: ("—" if v == "" else v),
+                    help="Rate the quality of this narrative"
                 )
-                if choice and choice != pre:
+                # Save only if a real option chosen and changed
+                if choice in REAL_OPTIONS and choice != pre:
                     if upsert_annotation(USER, chosen_rev, theme, mn, choice):
-                        st.toast("Saved ✓")
+                        st.toast("✓ Saved")
                         prefill_map[(theme, mn)] = choice
+                        # Clear cache to show updated data
+                        fetch_user_annotations.clear()
             else:
                 st.selectbox(
-                    "judgement",
+                    "quality",
                     ANNOT_OPTIONS,
-                    index=3,
+                    index=0,
                     key=key_sel,
                     label_visibility="collapsed",
+                    format_func=lambda v: ("—" if v == "" else v),
                     disabled=True,
                     help="Sign in to annotate"
                 )
+
 
 st.markdown("---")
 n_tax_themes = len(taxonomy)
 n_tax_narr = sum(len(v) for v in taxonomy.values())
 n_new_narr_kept = sum(len(extras) for _, (base, extras) in theme_narr_map.items() if extras)
-st.caption(
-    f"Revision {chosen_rev}: taxonomy themes={n_tax_themes}, taxonomy narratives={n_tax_narr}. "
-    f"New narratives shown (count≥{NEW_MIN_COUNT})={n_new_narr_kept}."
-)
+
+# Show annotation stats if logged in
+if USER and AUTH_UID:
+    n_annotated = len([v for v in prefill_map.values() if v in REAL_OPTIONS])
+    total_narratives = sum(len(base) + len(extras) for base, extras in theme_narr_map.values())
+    st.caption(
+        f"**Your Progress:** {n_annotated} / {total_narratives} narratives annotated • "
+        f"Revision {chosen_rev}: {n_tax_themes} themes, {n_tax_narr} base narratives, {n_new_narr_kept} new narratives (count≥{NEW_MIN_COUNT})"
+    )
+else:
+    st.caption(
+        f"Revision {chosen_rev}: {n_tax_themes} themes, {n_tax_narr} base narratives, {n_new_narr_kept} new narratives (count≥{NEW_MIN_COUNT})"
+    )
