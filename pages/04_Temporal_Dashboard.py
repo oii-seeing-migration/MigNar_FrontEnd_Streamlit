@@ -98,7 +98,7 @@ def available_models_union(*dfs):
 # -------------------------------------
 # Model selector
 models = available_models_union(stance_df, themes_df)
-default_model = "Qwen3-32B" if "Qwen3-32B" in models else (models[0] if models else None)
+default_model = "gpt-oss-20b" if "gpt-oss-20b" in models else (models[0] if models else None)
 if not models:
     st.error("No models found in aggregates.")
     st.stop()
