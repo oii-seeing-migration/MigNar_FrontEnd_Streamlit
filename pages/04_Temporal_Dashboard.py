@@ -26,11 +26,11 @@ st.title("Temporal Dashboard")
 # -------------------------------------
 DATA_DIR = os.path.expanduser("./data")
 STANCE_PATH = os.path.join(DATA_DIR, "stance_daily.parquet")
-FRAMES_PATH = os.path.join(DATA_DIR, "frames_daily.parquet")
+THEMES_PATH = os.path.join(DATA_DIR, "themes_daily.parquet")
 MESO_PATH   = os.path.join(DATA_DIR, "meso_daily.parquet")  # not used directly here
 
 @st.cache_data(ttl="1h", show_spinner=True)
-def load_parquets(stance_fp: str, frames_fp: str, meso_fp: str):
+def load_parquets(stance_fp: str, themes_fp: str, meso_fp: str):
     def _read_parquet(fp):
         if not os.path.exists(fp):
             return pd.DataFrame()
@@ -45,14 +45,14 @@ def load_parquets(stance_fp: str, frames_fp: str, meso_fp: str):
         return df
 
     stance_df = _read_parquet(stance_fp)
-    frames_df = _read_parquet(frames_fp)
+    themes_df = _read_parquet(themes_fp)
     meso_df   = _read_parquet(meso_fp)
-    return stance_df, frames_df, meso_df
+    return stance_df, themes_df, meso_df
 
-stance_df, frames_df, meso_df = load_parquets(STANCE_PATH, FRAMES_PATH, MESO_PATH)
+stance_df, themes_df, meso_df = load_parquets(STANCE_PATH, THEMES_PATH, MESO_PATH)
 
-if stance_df.empty and frames_df.empty:
-    st.error(f"No aggregates found in {DATA_DIR}. Ensure stance_daily.parquet and frames_daily.parquet exist.")
+if stance_df.empty and themes_df.empty:
+    st.error(f"No aggregates found in {DATA_DIR}. Ensure stance_daily.parquet and themes_daily.parquet exist.")
     st.stop()
 
 # -------------------------------------
@@ -97,7 +97,7 @@ def available_models_union(*dfs):
 # Sidebar controls (Model, Time, Domain)
 # -------------------------------------
 # Model selector
-models = available_models_union(stance_df, frames_df)
+models = available_models_union(stance_df, themes_df)
 default_model = "Qwen3-32B" if "Qwen3-32B" in models else (models[0] if models else None)
 if not models:
     st.error("No models found in aggregates.")
@@ -111,11 +111,11 @@ def model_filter(df):
     return df[df["model"] == selected_model].copy()
 
 stance_m = model_filter(stance_df)
-frames_m = model_filter(frames_df)
+themes_m = model_filter(themes_df)
 meso_m   = model_filter(meso_df)
 
 date_series = []
-for df in (stance_m, frames_m):
+for df in (stance_m, themes_m):
     if not df.empty and "day" in df.columns:
         date_series.append(df["day"])
 if date_series:
@@ -141,17 +141,19 @@ def date_filter(df: pd.DataFrame):
     return df[(df["day"].dt.date >= start_date) & (df["day"].dt.date <= end_date)].copy()
 
 stance_f = date_filter(stance_m)
-frames_f = date_filter(frames_m)
+themes_f = date_filter(themes_m)
 meso_f   = date_filter(meso_m)
 
 # Domain filter (defaults to all domains in filtered range)
 domains = set()
-for df in (stance_f, frames_f, meso_f):
+for df in (stance_f, themes_f, meso_f):
     if not df.empty and "source_domain" in df.columns:
         domains.update(df["source_domain"].dropna().unique().tolist())
 domains = sorted([d for d in domains if d])
-domains = ["UK Parliament (Lab)", "UK Parliament (Con)","US Congress (Dem)", "US Congress (Rep)", "theguardian.com", "telegraph.co.uk"]
-selected_domains = st.sidebar.multiselect("Source domain", options=domains, default=domains)
+default_domains = ['UK Parliament (Con)','UK Parliament (Lab)','US Congress (Rep)','US Congress (Dem)', 'dailymail.co.uk','telegraph.co.uk', 'theguardian.com','bbc.co.uk','independent.co.uk','thesun.co.uk','mirror.co.uk']
+default_domains = [d for d in default_domains if d in domains]
+selected_domains = st.sidebar.multiselect("Source domain", options=domains,
+                                          default=default_domains)
 
 def domain_filter(df: pd.DataFrame):
     if df.empty or not selected_domains or "source_domain" not in df.columns:
@@ -159,12 +161,12 @@ def domain_filter(df: pd.DataFrame):
     return df[df["source_domain"].isin(selected_domains)].copy()
 
 stance_f = domain_filter(stance_f)
-frames_f = domain_filter(frames_f)
+themes_f = domain_filter(themes_f)
 meso_f   = domain_filter(meso_f)
 
 # Add period column post-filter
 stance_p = add_period(stance_f, freq_label)
-frames_p = add_period(frames_f, freq_label)
+themes_p = add_period(themes_f, freq_label)
 meso_p   = add_period(meso_f, freq_label)
 
 # -------------------------------------
@@ -181,51 +183,50 @@ else:
     totals_per_period = pd.DataFrame(columns=["period", "total"])
 
 # -------------------------------------
-# Frames: temporal prevalence lines
+# Themes: temporal prevalence lines
 # -------------------------------------
-if frames_p.empty or totals_per_period.empty:
-    st.info("No frame data in selected filters.")
+if themes_p.empty or totals_per_period.empty:
+    st.info("No theme data in selected filters.")
 else:
-    frames_counts = (
-        frames_p.groupby(["period", "frame"], as_index=False)["count"]
+    themes_counts = (
+        themes_p.groupby(["period", "theme"], as_index=False)["count"]
         .sum()
         .rename(columns={"count": "articles"})
     )
-    frames_ts = frames_counts.merge(totals_per_period, on="period", how="left")
-    frames_ts["prevalence"] = frames_ts.apply(
+    themes_ts = themes_counts.merge(totals_per_period, on="period", how="left")
+    themes_ts["prevalence"] = themes_ts.apply(
         lambda r: (r["articles"] / r["total"]) if r["total"] and r["total"] > 0 else 0.0, axis=1
     )
 
-    # Top frames overall in the window to drive selection
-    overall_frames = (
-        frames_ts.groupby("frame")["articles"]
+    # Top themes overall in the window to drive selection
+    overall_themes = (
+        themes_ts.groupby("theme")["articles"]
         .sum()
         .sort_values(ascending=False)
         .head(30)
         .index.tolist()
     )
-    selected_frames = st.multiselect(
-        "Select frames (empty = top 8 auto)",
-        options=overall_frames,
-        default=overall_frames[:8]
+    selected_themes = st.multiselect(
+        "Select themes (empty = top 8 auto)",
+        options=overall_themes,
+        default=overall_themes[:8]
     )
-    if not selected_frames:
-        selected_frames = overall_frames[:8]
-
-    plot_frames = frames_ts[frames_ts["frame"].isin(selected_frames)].copy()
+    if not selected_themes:
+        selected_themes = overall_themes[:8]
+    plot_themes = themes_ts[themes_ts["theme"].isin(selected_themes)].copy()
 
     axis_x, scale_x = _time_axis_and_scale(freq_label)
-    line = alt.Chart(plot_frames).mark_line(point=True).encode(
+    line = alt.Chart(plot_themes).mark_line(point=True).encode(
         x=alt.X("period:T", axis=axis_x, scale=scale_x),
         y=alt.Y("prevalence:Q", axis=alt.Axis(format=".0%"), title="Prevalence"),
-        color=alt.Color("frame:N", title="Frame"),
+        color=alt.Color("theme:N", title="Theme"),
         tooltip=[
-            alt.Tooltip("frame:N", title="Frame"),
+            alt.Tooltip("theme:N", title="Theme"),
             alt.Tooltip("period:T", title="Period"),
             alt.Tooltip("articles:Q", title="# Articles"),
             alt.Tooltip("prevalence:Q", format=".1%", title="Prevalence"),
         ]
-    ).properties(title=f"Frame Prevalence Over Time ({freq_label}, Model: {selected_model})")
+    ).properties(title=f"Theme Prevalence Over Time ({freq_label}, Model: {selected_model})")
     st.altair_chart(line, use_container_width=True)
 
 # -------------------------------------
@@ -339,6 +340,6 @@ else:
 
 
 with st.expander("Underlying Data Snapshots"):
-    st.write("Frames (filtered):", frames_f.head(1000))
+    st.write("Themes (filtered):", themes_f.head(1000))
     st.write("Stance (filtered):", stance_f.head(1000))
     st.write("Meso (filtered):", meso_f.head(1000))

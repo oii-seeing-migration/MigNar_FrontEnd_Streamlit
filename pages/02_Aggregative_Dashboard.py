@@ -11,11 +11,11 @@ st.title("Aggregative Dashboard")
 # Use precomputed aggregates from ~/data
 DATA_DIR = os.path.expanduser("./data")
 STANCE_PATH = os.path.join(DATA_DIR, "stance_daily.parquet")
-FRAMES_PATH = os.path.join(DATA_DIR, "frames_daily.parquet")
+THEMES_PATH = os.path.join(DATA_DIR, "themes_daily.parquet")
 MESO_PATH = os.path.join(DATA_DIR, "meso_daily.parquet")
 
 @st.cache_data(ttl="1h", show_spinner=True)
-def load_parquets(stance_fp: str, frames_fp: str, meso_fp: str):
+def load_parquets(stance_fp: str, themes_fp: str, meso_fp: str):
     def _read_parquet(fp):
         if not os.path.exists(fp):
             return pd.DataFrame()
@@ -32,24 +32,24 @@ def load_parquets(stance_fp: str, frames_fp: str, meso_fp: str):
         return df
 
     stance_df = _read_parquet(stance_fp)
-    frames_df = _read_parquet(frames_fp)
+    themes_df = _read_parquet(themes_fp)
     meso_df = _read_parquet(meso_fp)
-    return stance_df, frames_df, meso_df
+    return stance_df, themes_df, meso_df
 
-stance_df, frames_df, meso_df = load_parquets(STANCE_PATH, FRAMES_PATH, MESO_PATH)
+stance_df, themes_df, meso_df = load_parquets(STANCE_PATH, THEMES_PATH, MESO_PATH)
 
-if stance_df.empty and frames_df.empty and meso_df.empty:
-    st.error(f"No aggregates found in {DATA_DIR}. Make sure stance_daily.parquet, frames_daily.parquet, meso_daily.parquet exist.")
+if stance_df.empty and themes_df.empty and meso_df.empty:
+    st.error(f"No aggregates found in {DATA_DIR}. Make sure stance_daily.parquet, themes_daily.parquet, meso_daily.parquet exist.")
     st.stop()
 
-# Sidebar: model selector (single model for now, e.g., 'Qwen3-32B')
+# Sidebar: model selector (single model for now, e.g., 'gpt-oss-20b')
 st.sidebar.header("Filters")
 available_models = sorted(set(
     list(stance_df.get("model", pd.Series(dtype=str)).unique() if "model" in stance_df else []) +
-    list(frames_df.get("model", pd.Series(dtype=str)).unique() if "model" in frames_df else []) +
+    list(themes_df.get("model", pd.Series(dtype=str)).unique() if "model" in themes_df else []) +
     list(meso_df.get("model", pd.Series(dtype=str)).unique() if "model" in meso_df else [])
 ))
-default_model = "Qwen3-32B" if "Qwen3-32B" in available_models else (available_models[0] if available_models else None)
+default_model = "gpt-oss-20b" if "gpt-oss-20b" in available_models else (available_models[0] if available_models else None)
 selected_model = st.sidebar.selectbox("Model", options=available_models, index=available_models.index(default_model) if default_model in available_models else 0)
 
 def by_model(df: pd.DataFrame) -> pd.DataFrame:
@@ -58,12 +58,12 @@ def by_model(df: pd.DataFrame) -> pd.DataFrame:
     return df[df["model"] == selected_model].copy()
 
 stance_df = by_model(stance_df)
-frames_df = by_model(frames_df)
+themes_df = by_model(themes_df)
 meso_df = by_model(meso_df)
 
 # Date range bounds from filtered-by-model data
 date_cols = []
-for df in (stance_df, frames_df, meso_df):
+for df in (stance_df, themes_df, meso_df):
     if not df.empty and "day" in df.columns:
         date_cols.append(pd.Series(df["day"]))
 if date_cols:
@@ -94,20 +94,22 @@ def filter_by_date(df: pd.DataFrame) -> pd.DataFrame:
     return df[(df["day"] >= start_date) & (df["day"] <= end_date)].copy()
 
 stance_f = filter_by_date(stance_df)
-frames_f = filter_by_date(frames_df)
+themes_f = filter_by_date(themes_df)
 meso_f = filter_by_date(meso_df)
 
 # Domains available after model + date filters
 domains = set()
-for df in (stance_f, frames_f, meso_f):
+for df in (stance_f, themes_f, meso_f):
     if not df.empty and "source_domain" in df.columns:
         domains.update(df["source_domain"].dropna().unique().tolist())
 domains = sorted([d for d in domains if d])
+default_domains = ['UK Parliament (Con)','UK Parliament (Lab)','US Congress (Rep)','US Congress (Dem)', 'dailymail.co.uk','telegraph.co.uk', 'theguardian.com','bbc.co.uk','independent.co.uk','thesun.co.uk','mirror.co.uk']
+default_domains = [d for d in default_domains if d in domains]
 
 selected_domains = st.sidebar.multiselect(
     "Source domain",
     options=domains,
-    default=domains
+    default=default_domains
 )
 
 def filter_by_domain(df: pd.DataFrame) -> pd.DataFrame:
@@ -116,7 +118,7 @@ def filter_by_domain(df: pd.DataFrame) -> pd.DataFrame:
     return df[df["source_domain"].isin(selected_domains)].copy()
 
 stance_f = filter_by_domain(stance_f)
-frames_f = filter_by_domain(frames_f)
+themes_f = filter_by_domain(themes_f)
 meso_f = filter_by_domain(meso_f)
 
 # Macros (from 03_Contrastive_Dashboard) + apply here
@@ -174,27 +176,27 @@ else:
     st.altair_chart(chart, use_container_width=True)
 
 
-# 2) Frames bar chart (top frames by total articles)
-st.subheader("Top Narrative Frames (selected range)")
-if frames_f.empty:
-    st.info("No frame data available for the selected filters.")
+# 2) Themes bar chart (top themes by total articles)
+st.subheader("Top Narrative Themes (selected range)")
+if themes_f.empty:
+    st.info("No theme data available for the selected filters.")
 else:
-    frames_sum = (
-        frames_f.groupby("frame", as_index=False)["count"]
+    themes_sum = (
+        themes_f.groupby("theme", as_index=False)["count"]
         .sum()
         .rename(columns={"count": "articles"})
     )
     if min_support > 0:
-        frames_sum = frames_sum[frames_sum["articles"] >= int(min_support)]
-    frames_top = frames_sum.sort_values("articles", ascending=False).head(int(top_n))
-    h = max(24 * len(frames_top), 360)
-    frames_chart = alt.Chart(frames_top).mark_bar().encode(
+        themes_sum = themes_sum[themes_sum["articles"] >= int(min_support)]
+    themes_top = themes_sum.sort_values("articles", ascending=False).head(int(top_n))
+    h = max(24 * len(themes_top), 360)
+    themes_chart = alt.Chart(themes_top).mark_bar().encode(
         x=alt.X("articles:Q", title="# Articles"),
-        y=alt.Y("frame:N", sort="-x", axis=alt.Axis(labelLimit=0, labelOverlap=False), title="Narrative Frame"),
+        y=alt.Y("theme:N", sort="-x", axis=alt.Axis(labelLimit=0, labelOverlap=False), title="Narrative Theme"),
         color=alt.value("#1f77b4"),
-        tooltip=[alt.Tooltip("frame:N", title="Frame"), alt.Tooltip("articles:Q", title="# Articles")],
-    ).properties(title=f"Top Frames (Model: {selected_model})", height=h)
-    st.altair_chart(frames_chart, use_container_width=True)
+        tooltip=[alt.Tooltip("theme:N", title="Theme"), alt.Tooltip("articles:Q", title="# Articles")],
+    ).properties(title=f"Top Themes (Model: {selected_model})", height=h)
+    st.altair_chart(themes_chart, use_container_width=True)
 
 # 3) Meso narratives bar chart (top meso narratives)
 st.subheader("Top Meso Narratives (selected range)")
@@ -220,5 +222,5 @@ else:
 with st.expander("Raw aggregates"):
     st.write("Model:", selected_model)
     st.write("Stance (filtered):", stance_f.head(1000))
-    st.write("Frames (filtered):", frames_f.head(1000))
+    st.write("Themes (filtered):", themes_f.head(1000))
     st.write("Meso (filtered):", meso_f.head(1000))

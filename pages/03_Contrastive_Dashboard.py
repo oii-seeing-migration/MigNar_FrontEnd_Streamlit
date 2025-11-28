@@ -14,11 +14,11 @@ st.title("Contrastive Dashboard")
 # ------------------------------------------------------------
 DATA_DIR = os.path.expanduser("./data")
 STANCE_PATH = os.path.join(DATA_DIR, "stance_daily.parquet")
-FRAMES_PATH = os.path.join(DATA_DIR, "frames_daily.parquet")
+THEMES_PATH = os.path.join(DATA_DIR, "themes_daily.parquet")
 MESO_PATH   = os.path.join(DATA_DIR, "meso_daily.parquet")
 
 @st.cache_data(ttl="1h", show_spinner=True)
-def load_parquets(stance_fp: str, frames_fp: str, meso_fp: str):
+def load_parquets(stance_fp: str, themes_fp: str, meso_fp: str):
     def _read_parquet(fp):
         if not os.path.exists(fp):
             return pd.DataFrame()
@@ -33,14 +33,14 @@ def load_parquets(stance_fp: str, frames_fp: str, meso_fp: str):
         return df
 
     stance_df = _read_parquet(stance_fp)
-    frames_df = _read_parquet(frames_fp)
+    themes_df = _read_parquet(themes_fp)
     meso_df   = _read_parquet(meso_fp)
-    return stance_df, frames_df, meso_df
+    return stance_df, themes_df, meso_df
 
-stance_df, frames_df, meso_df = load_parquets(STANCE_PATH, FRAMES_PATH, MESO_PATH)
+stance_df, themes_df, meso_df = load_parquets(STANCE_PATH, THEMES_PATH, MESO_PATH)
 
-if frames_df.empty and meso_df.empty:
-    st.error("No aggregates found. Please generate exports first (stance/frames/meso parquet files).")
+if themes_df.empty and meso_df.empty:
+    st.error("No aggregates found. Please generate exports first (stance/themes/meso parquet files).")
     st.stop()
 
 # ------------------------------------------------------------
@@ -89,13 +89,13 @@ def total_articles_from_stance(stance_slice: pd.DataFrame) -> int:
         return 0
     return int(stance_slice["count"].sum())
 
-def frames_counts(frames_slice: pd.DataFrame) -> pd.DataFrame:
-    if frames_slice.empty:
-        return pd.DataFrame(columns=["narrative frame", "articles"])
+def themes_counts(themes_slice: pd.DataFrame) -> pd.DataFrame:
+    if themes_slice.empty:
+        return pd.DataFrame(columns=["narrative theme", "articles"])
     g = (
-        frames_slice.groupby("frame", as_index=False)["count"]
+        themes_slice.groupby("theme", as_index=False)["count"]
         .sum()
-        .rename(columns={"frame": "narrative frame", "count": "articles"})
+        .rename(columns={"theme": "narrative theme", "count": "articles"})
     )
     return g
 
@@ -112,9 +112,9 @@ def meso_counts(meso_slice: pd.DataFrame) -> pd.DataFrame:
 # ------------------------------------------------------------
 # Sidebar controls (Filter A, Filter B, then Macros)
 # ------------------------------------------------------------
-# Available models (union from stance/frames/meso)
+# Available models (union from stance/themes/meso)
 available_models = sorted(set(
-    list(frames_df["model"].unique() if "model" in frames_df else []) +
+    list(themes_df["model"].unique() if "model" in themes_df else []) +
     list(stance_df["model"].unique() if "model" in stance_df else []) +
     list(meso_df["model"].unique() if "model" in meso_df else [])
 ))
@@ -122,7 +122,7 @@ if not available_models:
     st.error("No models available in aggregates.")
     st.stop()
 
-min_dt, max_dt = global_date_bounds([frames_df, stance_df, meso_df])
+min_dt, max_dt = global_date_bounds([themes_df, stance_df, meso_df])
 if not min_dt or not max_dt:
     st.error("No valid 'day' column found in aggregates.")
     st.stop()
@@ -143,7 +143,7 @@ period_1_in = st.sidebar.date_input(
     key="period_1",
 )
 period_1 = _norm_date_input(period_1_in)
-domains_1_options = pick_domains_for_range([frames_df, stance_df, meso_df], selected_model_A, period_1[0], period_1[1])
+domains_1_options = pick_domains_for_range([themes_df, stance_df, meso_df], selected_model_A, period_1[0], period_1[1])
 default_1 = [d for d in domains_1_options if d == "theguardian.com"] or domains_1_options
 domains_1_selected = st.sidebar.multiselect("Source domain (A)", options=domains_1_options, default=default_1, key="domain_1")
 domains_1 = set(domains_1_selected) if domains_1_selected else None
@@ -164,7 +164,7 @@ period_2_in = st.sidebar.date_input(
     key="period_2",
 )
 period_2 = _norm_date_input(period_2_in)
-domains_2_options = pick_domains_for_range([frames_df, stance_df, meso_df], selected_model_B, period_2[0], period_2[1])
+domains_2_options = pick_domains_for_range([themes_df, stance_df, meso_df], selected_model_B, period_2[0], period_2[1])
 default_2 = [d for d in domains_2_options if d == "telegraph.co.uk"] or domains_2_options
 domains_2_selected = st.sidebar.multiselect("Source domain (B)", options=domains_2_options, default=default_2, key="domain_2")
 domains_2 = set(domains_2_selected) if domains_2_selected else None
@@ -180,8 +180,8 @@ top_n = st.sidebar.slider("Top N items (by |difference|)", 5, 40, 20, 1)
 # Slices
 stance_a = filter_slice(stance_df, selected_model_A, period_1[0], period_1[1], domains_1)
 stance_b = filter_slice(stance_df, selected_model_B, period_2[0], period_2[1], domains_2)
-frames_a = filter_slice(frames_df, selected_model_A, period_1[0], period_1[1], domains_1)
-frames_b = filter_slice(frames_df, selected_model_B, period_2[0], period_2[1], domains_2)
+themes_a = filter_slice(themes_df, selected_model_A, period_1[0], period_1[1], domains_1)
+themes_b = filter_slice(themes_df, selected_model_B, period_2[0], period_2[1], domains_2)
 meso_a   = filter_slice(meso_df,   selected_model_A, period_1[0], period_1[1], domains_1)
 meso_b   = filter_slice(meso_df,   selected_model_B, period_2[0], period_2[1], domains_2)
 
@@ -190,25 +190,24 @@ total_a = total_articles_from_stance(stance_a)
 total_b = total_articles_from_stance(stance_b)
 
 # Aggregate counts
-frames_a_counts = frames_counts(frames_a).rename(columns={"articles": "articles_1"})
-frames_b_counts = frames_counts(frames_b).rename(columns={"articles": "articles_2"})
+themes_a_counts = themes_counts(themes_a).rename(columns={"articles": "articles_1"})
+themes_b_counts = themes_counts(themes_b).rename(columns={"articles": "articles_2"})
 meso_a_counts   = meso_counts(meso_a).rename(columns={"articles": "articles_1"})
 meso_b_counts   = meso_counts(meso_b).rename(columns={"articles": "articles_2"})
 
 # ------------------------------------------------------------
-# Frames contrast
+# Themes contrast
 # ------------------------------------------------------------
-frames_contrast = pd.merge(frames_a_counts, frames_b_counts, on="narrative frame", how="outer").fillna(0)
-if not frames_contrast.empty:
-    frames_contrast["articles_1"] = frames_contrast["articles_1"].astype(int)
-    frames_contrast["articles_2"] = frames_contrast["articles_2"].astype(int)
-    frames_contrast["prevalence_1"] = (frames_contrast["articles_1"] / total_a) if total_a > 0 else 0.0
-    frames_contrast["prevalence_2"] = (frames_contrast["articles_2"] / total_b) if total_b > 0 else 0.0
-    frames_contrast["diff_prevalence"] = frames_contrast["prevalence_2"] - frames_contrast["prevalence_1"]
-    frames_contrast["support_articles"] = frames_contrast["articles_1"] + frames_contrast["articles_2"]
+themes_contrast = pd.merge(themes_a_counts, themes_b_counts, on="narrative theme", how="outer").fillna(0)
+if not themes_contrast.empty:
+    themes_contrast["articles_1"] = themes_contrast["articles_1"].astype(int)
+    themes_contrast["articles_2"] = themes_contrast["articles_2"].astype(int)
+    themes_contrast["prevalence_1"] = (themes_contrast["articles_1"] / total_a) if total_a > 0 else 0.0
+    themes_contrast["prevalence_2"] = (themes_contrast["articles_2"] / total_b) if total_b > 0 else 0.0
+    themes_contrast["diff_prevalence"] = themes_contrast["prevalence_2"] - themes_contrast["prevalence_1"]
+    themes_contrast["support_articles"] = themes_contrast["articles_1"] + themes_contrast["articles_2"]
     if min_support > 0:
-        frames_contrast = frames_contrast[frames_contrast["support_articles"] >= int(min_support)].copy()
-
+        themes_contrast = themes_contrast[themes_contrast["support_articles"] >= int(min_support)].copy()
 # ------------------------------------------------------------
 # Meso narratives contrast
 # ------------------------------------------------------------
@@ -224,8 +223,8 @@ if not meso_contrast.empty:
         meso_contrast = meso_contrast[meso_contrast["support_articles"] >= int(min_support)].copy()
 
 # If both empty after filtering, stop
-if (frames_contrast is None or frames_contrast.empty) and (meso_contrast is None or meso_contrast.empty):
-    st.info("No frames or meso narratives found for the selected filters.")
+if (themes_contrast is None or themes_contrast.empty) and (meso_contrast is None or meso_contrast.empty):
+    st.info("No themes or meso narratives found for the selected filters.")
     st.stop()
 
 # Legend/summary
@@ -246,40 +245,40 @@ legend_html = f"""
 st.markdown(legend_html, unsafe_allow_html=True)
 
 # ------------------------------------------------------------
-# Plot: Frames diverging bar (B minus A)
+# Plot: Themes diverging bar (B minus A)
 # ------------------------------------------------------------
-if not frames_contrast.empty:
-    plot_df = frames_contrast.copy()
+if not themes_contrast.empty:
+    plot_df = themes_contrast.copy()
     plot_df["abs_diff"] = plot_df["diff_prevalence"].abs()
-    top_frames = plot_df.sort_values("abs_diff", ascending=False).head(int(top_n)).copy()
+    top_themes = plot_df.sort_values("abs_diff", ascending=False).head(int(top_n)).copy()
 
-    melt_frames = top_frames[["narrative frame", "prevalence_1", "prevalence_2", "diff_prevalence"]].copy().reset_index(drop=True)
-    melt_frames = melt_frames.melt(
-        id_vars=["narrative frame", "diff_prevalence"],
+    melt_themes = top_themes[["narrative theme", "prevalence_1", "prevalence_2", "diff_prevalence"]].copy().reset_index(drop=True)
+    melt_themes = melt_themes.melt(
+        id_vars=["narrative theme", "diff_prevalence"],
         value_vars=["prevalence_1", "prevalence_2"],
         var_name="side_var",
         value_name="prevalence"
     )
-    melt_frames["side_key"] = melt_frames["side_var"].map({"prevalence_1": "A", "prevalence_2": "B"})
-    melt_frames["signed_prev"] = melt_frames.apply(lambda r: -r["prevalence"] if r["side_key"] == "A" else r["prevalence"], axis=1)
+    melt_themes["side_key"] = melt_themes["side_var"].map({"prevalence_1": "A", "prevalence_2": "B"})
+    melt_themes["signed_prev"] = melt_themes.apply(lambda r: -r["prevalence"] if r["side_key"] == "A" else r["prevalence"], axis=1)
 
-    frame_order = melt_frames.drop_duplicates("narrative frame").sort_values("diff_prevalence")["narrative frame"].tolist()
-    max_val_f = float(melt_frames["prevalence"].max() or 0.0)
-    x_limit_f = (max_val_f * 1.15) if max_val_f > 0 else 0.05
+    theme_order = melt_themes.drop_duplicates("narrative theme").sort_values("diff_prevalence")["narrative theme"].tolist()
+    max_val_t = float(melt_themes["prevalence"].max() or 0.0)
+    x_limit_t = (max_val_t * 1.15) if max_val_t > 0 else 0.05
 
-    frames_bar = alt.Chart(melt_frames).mark_bar().encode(
-        x=alt.X("signed_prev:Q", title="Prevalence (% of relevant articles)", scale=alt.Scale(domain=[-x_limit_f, x_limit_f], nice=False), axis=alt.Axis(format=".0%")),
-        y=alt.Y("narrative frame:N", sort=frame_order, title="Frame", axis=alt.Axis(labelLimit=0, labelOverlap=False)),
+    themes_bar = alt.Chart(melt_themes).mark_bar().encode(
+        x=alt.X("signed_prev:Q", title="Prevalence (% of relevant articles)", scale=alt.Scale(domain=[-x_limit_t, x_limit_t], nice=False), axis=alt.Axis(format=".0%")),
+        y=alt.Y("narrative theme:N", sort=theme_order, title="Theme", axis=alt.Axis(labelLimit=0, labelOverlap=False)),
         color=alt.Color("side_key:N", title=None, scale=alt.Scale(domain=["A", "B"], range=["#d7191c", "#2c7bb6"]), legend=alt.Legend(orient="top")),
         tooltip=[
-            alt.Tooltip("narrative frame:N", title="Frame"),
+            alt.Tooltip("narrative theme:N", title="Theme"),
             alt.Tooltip("side_key:N", title="Filter"),
             alt.Tooltip("prevalence:Q", title="Prevalence", format=".1%"),
             alt.Tooltip("diff_prevalence:Q", title="(B − A) pp", format=".1%"),
         ],
     )
-    st.subheader("Contrast in Narrative Frames (B minus A)")
-    st.altair_chart(frames_bar, use_container_width=True)
+    st.subheader("Contrast in Narrative Themes (B minus A)")
+    st.altair_chart(themes_bar, use_container_width=True)
 
 # ------------------------------------------------------------
 # Plot: Meso narratives diverging bar (B minus A)
@@ -321,13 +320,13 @@ if not meso_contrast.empty:
 # ------------------------------------------------------------
 # Raw data expanders
 # ------------------------------------------------------------
-if not frames_contrast.empty:
-    plot_df = frames_contrast.copy()
+if not themes_contrast.empty:
+    plot_df = themes_contrast.copy()
     plot_df["abs_diff"] = plot_df["diff_prevalence"].abs()
-    top_frames = plot_df.sort_values("abs_diff", ascending=False).head(int(top_n)).copy()
-    with st.expander("Raw Frames Contrast Data"):
-        st.dataframe(top_frames[[
-            "narrative frame",
+    top_themes = plot_df.sort_values("abs_diff", ascending=False).head(int(top_n)).copy()
+    with st.expander("Raw Themes Contrast Data"):
+        st.dataframe(top_themes[[
+            "narrative theme",
             "articles_1", "articles_2",
             "prevalence_1", "prevalence_2",
             "diff_prevalence",
