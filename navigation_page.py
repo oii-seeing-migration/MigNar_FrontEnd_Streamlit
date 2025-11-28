@@ -4,8 +4,11 @@ import base64
 import json
 import urllib.parse
 
-st.set_page_config(page_title="Sign In", layout="wide", page_icon="🔐")
-
+st.set_page_config(
+    page_title="Sign In - MigNar", 
+    layout="wide", 
+    page_icon=".streamlit/static/MigNar_icon.png"
+)
 # -----------------------------------------------------------------------------
 # Config
 # -----------------------------------------------------------------------------

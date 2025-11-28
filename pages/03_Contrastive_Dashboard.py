@@ -4,7 +4,9 @@ import altair as alt
 import pandas as pd
 from datetime import date
 
-st.set_page_config(page_title="Contrastive Dashboard", layout="wide")
+st.set_page_config(page_title="Contrastive Dashboard",
+                   layout="wide",
+                   page_icon=".streamlit/static/MigNar_icon.png")
 st.title("Contrastive Dashboard")
 
 # ------------------------------------------------------------

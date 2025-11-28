@@ -3,7 +3,9 @@ import streamlit as st
 import altair as alt
 import pandas as pd
 
-st.set_page_config(page_title="Aggregative Dashboard", layout="wide")
+st.set_page_config(page_title="Aggregative Dashboard",
+                   layout="wide",
+                   page_icon=".streamlit/static/MigNar_icon.png")
 st.title("Aggregative Dashboard")
 
 # Use precomputed aggregates from ~/data

@@ -3,7 +3,9 @@ import pandas as pd
 import streamlit as st
 from supabase import create_client, Client
 
-st.set_page_config(page_title="Meso Narratives Taxonomy", layout="wide")
+st.set_page_config(page_title="Meso Narratives Taxonomy",
+                   layout="wide",
+                   page_icon=".streamlit/static/MigNar_icon.png")
 
 # ── Supabase client ────────────────────────────────────────────────────────────
 SB_URL = st.secrets["supabase"]["url"]

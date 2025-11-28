@@ -3,7 +3,9 @@ import pandas as pd
 import streamlit as st
 from difflib import SequenceMatcher
 
-st.set_page_config(page_title="Narratives on Articles", layout="wide")
+st.set_page_config(page_title="Narratives on Articles",
+                   layout="wide",
+                   page_icon=".streamlit/static/MigNar_icon.png")
 
 _qp = st.query_params
 def _get_param(k):
