@@ -182,52 +182,6 @@ if not stance_p.empty:
 else:
     totals_per_period = pd.DataFrame(columns=["period", "total"])
 
-# -------------------------------------
-# Themes: temporal prevalence lines
-# -------------------------------------
-if themes_p.empty or totals_per_period.empty:
-    st.info("No theme data in selected filters.")
-else:
-    themes_counts = (
-        themes_p.groupby(["period", "theme"], as_index=False)["count"]
-        .sum()
-        .rename(columns={"count": "articles"})
-    )
-    themes_ts = themes_counts.merge(totals_per_period, on="period", how="left")
-    themes_ts["prevalence"] = themes_ts.apply(
-        lambda r: (r["articles"] / r["total"]) if r["total"] and r["total"] > 0 else 0.0, axis=1
-    )
-
-    # Top themes overall in the window to drive selection
-    overall_themes = (
-        themes_ts.groupby("theme")["articles"]
-        .sum()
-        .sort_values(ascending=False)
-        .head(30)
-        .index.tolist()
-    )
-    selected_themes = st.multiselect(
-        "Select themes (empty = top 8 auto)",
-        options=overall_themes,
-        default=overall_themes[:8]
-    )
-    if not selected_themes:
-        selected_themes = overall_themes[:8]
-    plot_themes = themes_ts[themes_ts["theme"].isin(selected_themes)].copy()
-
-    axis_x, scale_x = _time_axis_and_scale(freq_label)
-    line = alt.Chart(plot_themes).mark_line(point=True).encode(
-        x=alt.X("period:T", axis=axis_x, scale=scale_x),
-        y=alt.Y("prevalence:Q", axis=alt.Axis(format=".0%"), title="Prevalence"),
-        color=alt.Color("theme:N", title="Theme"),
-        tooltip=[
-            alt.Tooltip("theme:N", title="Theme"),
-            alt.Tooltip("period:T", title="Period"),
-            alt.Tooltip("articles:Q", title="# Articles"),
-            alt.Tooltip("prevalence:Q", format=".1%", title="Prevalence"),
-        ]
-    ).properties(title=f"Theme Prevalence Over Time ({freq_label}, Model: {selected_model})")
-    st.altair_chart(line, use_container_width=True)
 
 # -------------------------------------
 # Stance: temporal stance-score lines (by domain)
@@ -285,6 +239,58 @@ else:
             ],
         ).properties(title=f"Stance Score Over Time ({freq_label}, Model: {selected_model})", height=420)
         st.altair_chart(stance_line, use_container_width=True)
+
+
+
+
+# -------------------------------------
+# Themes: temporal prevalence lines
+# -------------------------------------
+if themes_p.empty or totals_per_period.empty:
+    st.info("No theme data in selected filters.")
+else:
+    themes_counts = (
+        themes_p.groupby(["period", "theme"], as_index=False)["count"]
+        .sum()
+        .rename(columns={"count": "articles"})
+    )
+    themes_ts = themes_counts.merge(totals_per_period, on="period", how="left")
+    themes_ts["prevalence"] = themes_ts.apply(
+        lambda r: (r["articles"] / r["total"]) if r["total"] and r["total"] > 0 else 0.0, axis=1
+    )
+
+    # Top themes overall in the window to drive selection
+    overall_themes = (
+        themes_ts.groupby("theme")["articles"]
+        .sum()
+        .sort_values(ascending=False)
+        .head(30)
+        .index.tolist()
+    )
+    selected_themes = st.multiselect(
+        "Select themes (empty = top 8 auto)",
+        options=overall_themes,
+        default=overall_themes[:8]
+    )
+    if not selected_themes:
+        selected_themes = overall_themes[:8]
+    plot_themes = themes_ts[themes_ts["theme"].isin(selected_themes)].copy()
+
+    axis_x, scale_x = _time_axis_and_scale(freq_label)
+    line = alt.Chart(plot_themes).mark_line(point=True).encode(
+        x=alt.X("period:T", axis=axis_x, scale=scale_x),
+        y=alt.Y("prevalence:Q", axis=alt.Axis(format=".0%"), title="Prevalence"),
+        color=alt.Color("theme:N", title="Theme"),
+        tooltip=[
+            alt.Tooltip("theme:N", title="Theme"),
+            alt.Tooltip("period:T", title="Period"),
+            alt.Tooltip("articles:Q", title="# Articles"),
+            alt.Tooltip("prevalence:Q", format=".1%", title="Prevalence"),
+        ]
+    ).properties(title=f"Theme Prevalence Over Time ({freq_label}, Model: {selected_model})")
+    st.altair_chart(line, use_container_width=True)
+
+
 
 # -------------------------------------
 # Meso narratives: temporal prevalence lines
