@@ -85,7 +85,7 @@ div[data-testid="column"] { padding-left: 0 !important; padding-right: 0 !import
 DATA_DIR   = os.path.expanduser("./data")
 MESO_PATH  = os.path.join(DATA_DIR, "meso_daily.parquet")
 TAXON_DIR  = os.path.join(os.path.dirname(__file__), "../taxonomy")
-NEW_MIN_COUNT = 3
+NEW_MIN_COUNT = 20
 ARTICLES_SLUG = "Narratives_on_Articles"
 
 ANNOT_OPTIONS = ["", "duplicate narrative", "too specific", "too generic", "good"]
