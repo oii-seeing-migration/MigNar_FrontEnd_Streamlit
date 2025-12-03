@@ -278,7 +278,7 @@ if not themes_contrast.empty:
         ],
     )
     st.subheader("Contrast in Narrative Themes (B minus A)")
-    st.altair_chart(themes_bar, use_container_width=True)
+    st.altair_chart(themes_bar, width="stretch")
 
 # ------------------------------------------------------------
 # Plot: Meso narratives diverging bar (B minus A)
@@ -315,7 +315,7 @@ if not meso_contrast.empty:
         ],
     )
     st.subheader("Contrast in Meso Narratives (B minus A)")
-    st.altair_chart(meso_bar, use_container_width=True)
+    st.altair_chart(meso_bar, width="stretch")
 
 # ------------------------------------------------------------
 # Raw data expanders

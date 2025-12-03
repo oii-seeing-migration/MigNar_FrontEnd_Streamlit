@@ -297,4 +297,4 @@ with st.expander("Narratives Metadata"):
         "fragment_present": o["has_fragment"]
     } for i, o in enumerate(all_ann_frag_objs)]
     meta_df = pd.DataFrame(rows)
-    st.dataframe(meta_df, use_container_width=True, hide_index=True)
+    st.dataframe(meta_df, width="stretch", hide_index=True)

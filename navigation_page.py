@@ -140,7 +140,7 @@ if user:
     col_a, col_b, col_c = st.columns([2, 2, 6])
     
     with col_a:
-        if st.button("🚪 Sign Out", use_container_width=True):
+        if st.button("🚪 Sign Out", width="stretch"):
             try:
                 supabase.auth.sign_out()
             except:
@@ -186,7 +186,7 @@ else:
             
             submitted = st.form_submit_button(
                 f"{'Create Account' if auth_mode == 'Sign Up' else 'Sign In'}",
-                use_container_width=True,
+                width="stretch",
                 type="primary"
             )
             

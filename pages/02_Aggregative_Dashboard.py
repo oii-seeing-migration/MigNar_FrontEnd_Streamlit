@@ -173,7 +173,7 @@ else:
             alt.Tooltip("total:Q", title="Total"),
         ],
     ).properties(height=h, title=f"Aggregate Stance by Domain (Model: {selected_model})")
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, width="stretch")
 
 
 # 2) Themes bar chart (top themes by total articles)
@@ -196,7 +196,7 @@ else:
         color=alt.value("#1f77b4"),
         tooltip=[alt.Tooltip("theme:N", title="Theme"), alt.Tooltip("articles:Q", title="# Articles")],
     ).properties(title=f"Top Themes (Model: {selected_model})", height=h)
-    st.altair_chart(themes_chart, use_container_width=True)
+    st.altair_chart(themes_chart, width="stretch")
 
 # 3) Meso narratives bar chart (top meso narratives)
 st.subheader("Top Meso Narratives (selected range)")
@@ -217,7 +217,7 @@ else:
         y=alt.Y("meso_narrative:N", sort="-x", axis=alt.Axis(labelLimit=0, labelOverlap=False,titleAngle=270, titlePadding=300, labelPadding=6), title="Meso Narrative"),#     y=alt.Y(
         tooltip=[alt.Tooltip("meso_narrative:N", title="Meso Narrative"), alt.Tooltip("articles:Q", title="# Articles")],
     ).properties(title=f"Top Meso Narratives (Model: {selected_model})", height=h)
-    st.altair_chart(meso_chart, use_container_width=True)
+    st.altair_chart(meso_chart, width="stretch")
 
 with st.expander("Raw aggregates"):
     st.write("Model:", selected_model)

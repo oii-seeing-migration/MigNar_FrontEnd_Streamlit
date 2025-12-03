@@ -75,7 +75,7 @@ def _freq_to_pandas(freq_label: str) -> str:
     # - Weekly anchored to Monday
     # - Monthly period ('M')
     # - Yearly period ('A-DEC')
-    return {"Weekly": "W-MON", "Monthly": "M", "Yearly": "A-DEC"}[freq_label]
+    return {"Weekly": "W-MON", "Monthly": "M", "Yearly": "Y-DEC"}[freq_label]
 
 def add_period(df: pd.DataFrame, freq_label: str) -> pd.DataFrame:
     if df.empty or "day" not in df.columns:
@@ -238,7 +238,7 @@ else:
                 alt.Tooltip("total:Q", title="Total"),
             ],
         ).properties(title=f"Stance Score Over Time ({freq_label}, Model: {selected_model})", height=420)
-        st.altair_chart(stance_line, use_container_width=True)
+        st.altair_chart(stance_line, width="stretch")
 
 
 
@@ -288,7 +288,7 @@ else:
             alt.Tooltip("prevalence:Q", format=".1%", title="Prevalence"),
         ]
     ).properties(title=f"Theme Prevalence Over Time ({freq_label}, Model: {selected_model})")
-    st.altair_chart(line, use_container_width=True)
+    st.altair_chart(line, width="stretch")
 
 
 
@@ -339,7 +339,7 @@ else:
             alt.Tooltip("prevalence:Q", format=".1%", title="Prevalence"),
         ]
     ).properties(title=f"Meso Narrative Prevalence Over Time ({freq_label}, Model: {selected_model})")
-    st.altair_chart(meso_line, use_container_width=True)
+    st.altair_chart(meso_line, width="stretch")
 
 
 
