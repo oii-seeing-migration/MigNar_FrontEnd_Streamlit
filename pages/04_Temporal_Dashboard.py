@@ -29,7 +29,7 @@ STANCE_PATH = os.path.join(DATA_DIR, "stance_daily.parquet")
 THEMES_PATH = os.path.join(DATA_DIR, "themes_daily.parquet")
 MESO_PATH   = os.path.join(DATA_DIR, "meso_daily.parquet")  # not used directly here
 
-@st.cache_data(ttl="1h", show_spinner=True)
+@st.cache_data(ttl="30m", show_spinner=True, max_entries=10)
 def load_parquets(stance_fp: str, themes_fp: str, meso_fp: str):
     def _read_parquet(fp):
         if not os.path.exists(fp):
@@ -109,6 +109,12 @@ def model_filter(df):
     if df.empty or "model" not in df.columns:
         return df
     return df[df["model"] == selected_model].copy()
+
+st.sidebar.markdown("---")
+if st.sidebar.button("🧹 Clear Cache (if slow)"):
+    st.cache_data.clear()
+    st.success("Cache cleared! Refresh to reload data.")
+
 
 stance_m = model_filter(stance_df)
 themes_m = model_filter(themes_df)
@@ -346,6 +352,6 @@ else:
 
 
 with st.expander("Underlying Data Snapshots"):
-    st.write("Themes (filtered):", themes_f.head(1000))
-    st.write("Stance (filtered):", stance_f.head(1000))
-    st.write("Meso (filtered):", meso_f.head(1000))
+    st.write("Themes (filtered):", themes_f.head(100))
+    st.write("Stance (filtered):", stance_f.head(100))
+    st.write("Meso (filtered):", meso_f.head(100))

@@ -17,7 +17,7 @@ STANCE_PATH = os.path.join(DATA_DIR, "stance_daily.parquet")
 THEMES_PATH = os.path.join(DATA_DIR, "themes_daily.parquet")
 MESO_PATH   = os.path.join(DATA_DIR, "meso_daily.parquet")
 
-@st.cache_data(ttl="1h", show_spinner=True)
+@st.cache_data(ttl="30m", show_spinner=True, max_entries=10)
 def load_parquets(stance_fp: str, themes_fp: str, meso_fp: str):
     def _read_parquet(fp):
         if not os.path.exists(fp):
@@ -173,6 +173,12 @@ domains_2 = set(domains_2_selected) if domains_2_selected else None
 st.sidebar.subheader("Macros")
 min_support = st.sidebar.slider("Min combined article support", 0, 50, 0, 1)
 top_n = st.sidebar.slider("Top N items (by |difference|)", 5, 40, 20, 1)
+
+
+st.sidebar.markdown("---")
+if st.sidebar.button("🧹 Clear Cache (if slow)"):
+    st.cache_data.clear()
+    st.success("Cache cleared! Refresh to reload data.")
 
 # ------------------------------------------------------------
 # Compute contrast using aggregates
