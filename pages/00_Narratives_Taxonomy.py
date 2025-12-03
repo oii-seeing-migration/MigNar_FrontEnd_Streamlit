@@ -85,7 +85,7 @@ div[data-testid="column"] { padding-left: 0 !important; padding-right: 0 !import
 DATA_DIR   = os.path.expanduser("./data")
 MESO_PATH  = os.path.join(DATA_DIR, "meso_daily.parquet")
 TAXON_DIR  = os.path.join(os.path.dirname(__file__), "../taxonomy")
-NEW_MIN_COUNT = 20
+# NEW_MIN_COUNT = 20
 ARTICLES_SLUG = "Narratives_on_Articles"
 
 ANNOT_OPTIONS = ["", "duplicate narrative", "too specific", "too generic", "good"]
@@ -203,6 +203,17 @@ source_choice = st.sidebar.selectbox("Source Domain", ["(All sources)"] + srcs, 
 model_choice = st.sidebar.selectbox("Model", ["(All models)"] + models, index=0)
 source_filter = None if source_choice == "(All sources)" else source_choice
 model_filter = None if model_choice == "(All models)" else model_choice
+
+# Add NEW_MIN_COUNT control
+st.sidebar.divider()
+NEW_MIN_COUNT = st.sidebar.number_input(
+    "Min count for new narratives",
+    min_value=1,
+    max_value=500,
+    value=50,
+    step=5,
+    help="Minimum article count required to display new narratives not in the taxonomy"
+)
 
 # ── Login banner ───────────────────────────────────────────────────────────────
 if USER and AUTH_UID and BIND_OK:
