@@ -17,7 +17,7 @@ pre_meso  = _get_param("meso")
 
 DATA_PATH = os.getenv("MESO_SAMPLES_PATH") or os.path.join(os.getenv("EXPORT_DIR") or "./data", "meso_samples.parquet")
 
-@st.cache_data(show_spinner=True, max_entries=5)  # Added max_entries
+@st.cache_data(show_spinner=True, max_entries=1)  # Added max_entries
 def load_samples(path: str) -> pd.DataFrame:
     if not os.path.exists(path):
         return pd.DataFrame()
