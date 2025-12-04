@@ -262,7 +262,7 @@ visible_themes_sorted = sorted(visible_themes, key=lambda t: theme_totals.get(t,
 
 st.title(f"Meso Narratives Taxonomy (Revision {chosen_rev})")
 st.caption("Review narratives, annotate quality, and explore articles. Your annotations are saved automatically.")
-
+st.info("📖 **New to annotation?** [Read the annotation guide](/Instructions#annotation-guide) to understand what each quality label means and how to use them effectively.")
 prefill_map = fetch_user_annotations(AUTH_UID if AUTH_UID else (USER.get("id") if USER else None), chosen_rev)
 
 def articles_link(theme: str | None = None, meso: str | None = None) -> str:
