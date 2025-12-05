@@ -17,15 +17,21 @@ pre_meso  = _get_param("meso")
 
 DATA_PATH = os.getenv("MESO_SAMPLES_PATH") or os.path.join(os.getenv("EXPORT_DIR") or "./data", "meso_samples.parquet")
 
-@st.cache_data(show_spinner=True, max_entries=1)  # Added max_entries
+# @st.cache_data(show_spinner=True, max_entries=1)
 def load_samples(path: str) -> pd.DataFrame:
     if not os.path.exists(path):
         return pd.DataFrame()
     df = pd.read_parquet(path)
-    # Reduce memory by converting object columns to category where appropriate
+    
+    # Fill NA values BEFORE converting to category
+    for col in df.select_dtypes(include=['object']).columns:
+        df[col] = df[col].fillna("")
+    
+    # Now safe to convert to category (empty string is already in the data)
     for col in df.select_dtypes(include=['object']).columns:
         if df[col].nunique() < len(df) * 0.5:  # If less than 50% unique values
             df[col] = df[col].astype('category')
+    
     return df
 
 def safe_json_load(s: str | None):
@@ -46,7 +52,7 @@ MESO_SAMPLE_COL = "meso" if "meso" in df.columns else ("meso_narrative" if "meso
 
 for c in [THEME_COL, MESO_SAMPLE_COL, "title", "body"]:
     if c and c in df.columns:
-        df[c] = df[c].fillna("").astype(str)
+        df[c] = df[c].astype(str)
 
 def gather_meso_set(row: pd.Series):
     out = set()

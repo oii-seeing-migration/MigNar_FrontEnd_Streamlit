@@ -25,21 +25,22 @@ st.title("Temporal Dashboard")
 # Load precomputed aggregates (Parquet)
 # -------------------------------------
 DATA_DIR = os.path.expanduser("./data")
-STANCE_PATH = os.path.join(DATA_DIR, "stance_daily.parquet")
-THEMES_PATH = os.path.join(DATA_DIR, "themes_daily.parquet")
-MESO_PATH   = os.path.join(DATA_DIR, "meso_daily.parquet")  # not used directly here
+STANCE_PATH = os.path.join(DATA_DIR, "stance_monthly.parquet")
+THEMES_PATH = os.path.join(DATA_DIR, "themes_monthly.parquet")
+MESO_PATH   = os.path.join(DATA_DIR, "meso_monthly.parquet")
 
-@st.cache_data(ttl="30m", show_spinner=True, max_entries=1)
+# @st.cache_data(ttl="30m", show_spinner=True, max_entries=1)
 def load_parquets(stance_fp: str, themes_fp: str, meso_fp: str):
     def _read_parquet(fp):
         if not os.path.exists(fp):
             return pd.DataFrame()
         df = pd.read_parquet(fp)
-        if "day" in df.columns:
-            df["day"] = pd.to_datetime(df["day"], errors="coerce")
-        for col in ("source_domain", "model"):
-            if col in df.columns:
-                df[col] = df[col].fillna("").astype(str)
+        if "month" in df.columns:
+            df["month"] = pd.to_datetime(df["month"] + "-01", errors="coerce")
+        if "source_domain" in df.columns:
+            df["source_domain"] = df["source_domain"].fillna("").astype(str)
+        if "model" in df.columns:
+            df["model"] = df["model"].fillna("").astype(str)
         if "count" in df.columns:
             df["count"] = pd.to_numeric(df["count"], errors="coerce").fillna(0).astype(int)
         return df
@@ -52,7 +53,7 @@ def load_parquets(stance_fp: str, themes_fp: str, meso_fp: str):
 stance_df, themes_df, meso_df = load_parquets(STANCE_PATH, THEMES_PATH, MESO_PATH)
 
 if stance_df.empty and themes_df.empty:
-    st.error(f"No aggregates found in {DATA_DIR}. Ensure stance_daily.parquet and themes_daily.parquet exist.")
+    st.error(f"No aggregates found in {DATA_DIR}. Ensure stance_monthly.parquet and themes_monthly.parquet exist.")
     st.stop()
 
 # -------------------------------------
@@ -78,12 +79,12 @@ def _freq_to_pandas(freq_label: str) -> str:
     return {"Weekly": "W-MON", "Monthly": "M", "Yearly": "Y-DEC"}[freq_label]
 
 def add_period(df: pd.DataFrame, freq_label: str) -> pd.DataFrame:
-    if df.empty or "day" not in df.columns:
+    if df.empty or "month" not in df.columns:
         return df
     freq = _freq_to_pandas(freq_label)
     out = df.copy()
-    # Convert to Period, then to start-of-period Timestamp (avoids 'MS' unsupported error)
-    out["period"] = out["day"].dt.to_period(freq).dt.start_time
+    # Convert to Period, then to start-of-period Timestamp
+    out["period"] = out["month"].dt.to_period(freq).dt.start_time
     return out
 
 def available_models_union(*dfs):
@@ -111,9 +112,9 @@ def model_filter(df):
     return df[df["model"] == selected_model].copy()
 
 st.sidebar.markdown("---")
-if st.sidebar.button("🧹 Clear Cache (if slow)"):
-    st.cache_data.clear()
-    st.success("Cache cleared! Refresh to reload data.")
+# if st.sidebar.button("🧹 Clear Cache (if slow)"):
+#     st.cache_data.clear()
+#     st.success("Cache cleared! Refresh to reload data.")
 
 
 stance_m = model_filter(stance_df)
@@ -122,17 +123,19 @@ meso_m   = model_filter(meso_df)
 
 date_series = []
 for df in (stance_m, themes_m):
-    if not df.empty and "day" in df.columns:
-        date_series.append(df["day"])
+    if not df.empty and "month" in df.columns:
+        date_series.append(df["month"])
+
 if date_series:
-    all_days = pd.concat(date_series).dropna()
-    min_dt, max_dt = all_days.min().date(), all_days.max().date()
+    all_months = pd.concat(date_series, ignore_index=True).dropna()
+    min_dt = all_months.min().date()
+    max_dt = all_months.max().date()
 else:
-    st.error("No valid 'day' column found for the selected model.")
+    st.error("No valid 'month' column found for the selected model.")
     st.stop()
 
 # Granularity
-freq_label = st.sidebar.selectbox("Granularity", ["Weekly", "Monthly", "Yearly"], index=2)
+freq_label = st.sidebar.selectbox("Granularity", ["Monthly", "Yearly"], index=1)
 
 # Date picker
 picked = st.sidebar.date_input("Date range", value=(date(2000, 1, 1), max_dt), min_value=min_dt, max_value=max_dt)
@@ -142,9 +145,9 @@ else:
     start_date = end_date = picked
 
 def date_filter(df: pd.DataFrame):
-    if df.empty or "day" not in df.columns:
+    if df.empty or "month" not in df.columns:
         return df
-    return df[(df["day"].dt.date >= start_date) & (df["day"].dt.date <= end_date)].copy()
+    return df[(df["month"].dt.date >= start_date) & (df["month"].dt.date <= end_date)].copy()
 
 stance_f = date_filter(stance_m)
 themes_f = date_filter(themes_m)

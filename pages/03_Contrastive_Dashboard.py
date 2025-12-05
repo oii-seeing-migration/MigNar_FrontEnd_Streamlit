@@ -13,28 +13,28 @@ st.title("Contrastive Dashboard")
 # Load precomputed aggregates from ./data (no DB round-trips)
 # ------------------------------------------------------------
 DATA_DIR = os.path.expanduser("./data")
-STANCE_PATH = os.path.join(DATA_DIR, "stance_daily.parquet")
-THEMES_PATH = os.path.join(DATA_DIR, "themes_daily.parquet")
-MESO_PATH   = os.path.join(DATA_DIR, "meso_daily.parquet")
+STANCE_PATH = os.path.join(DATA_DIR, "stance_monthly.parquet")
+THEMES_PATH = os.path.join(DATA_DIR, "themes_monthly.parquet")
+MESO_PATH   = os.path.join(DATA_DIR, "meso_monthly.parquet")
 
-@st.cache_data(ttl="30m", show_spinner=True, max_entries=1)
+# @st.cache_data(ttl="30m", show_spinner=True, max_entries=1)
 def load_parquets(stance_fp: str, themes_fp: str, meso_fp: str):
     def _read_parquet(fp):
         if not os.path.exists(fp):
             return pd.DataFrame()
         df = pd.read_parquet(fp)
-        if "day" in df.columns:
-            df["day"] = pd.to_datetime(df["day"], errors="coerce").dt.date
-        for col in ("source_domain", "model"):
-            if col in df.columns:
-                df[col] = df[col].fillna("").astype(str)
+        if "month" in df.columns:
+            df["month"] = pd.to_datetime(df["month"] + "-01", errors="coerce")
+        if "source_domain" in df.columns:
+            df["source_domain"] = df["source_domain"].fillna("").astype(str)
+        if "model" in df.columns:
+            df["model"] = df["model"].fillna("").astype(str)
         if "count" in df.columns:
             df["count"] = pd.to_numeric(df["count"], errors="coerce").fillna(0).astype(int)
         return df
-
     stance_df = _read_parquet(stance_fp)
     themes_df = _read_parquet(themes_fp)
-    meso_df   = _read_parquet(meso_fp)
+    meso_df = _read_parquet(meso_fp)
     return stance_df, themes_df, meso_df
 
 stance_df, themes_df, meso_df = load_parquets(STANCE_PATH, THEMES_PATH, MESO_PATH)
@@ -49,12 +49,13 @@ if themes_df.empty and meso_df.empty:
 def global_date_bounds(dfs: list[pd.DataFrame]):
     series = []
     for df in dfs:
-        if not df.empty and "day" in df.columns:
-            series.append(pd.Series(df["day"]))
+        if not df.empty and "month" in df.columns:
+            series.append(df["month"])
     if not series:
         return None, None
-    all_days = pd.concat(series, ignore_index=True).dropna()
-    return all_days.min(), all_days.max()
+    all_months = pd.concat(series, ignore_index=True).dropna()
+    return all_months.min().date(), all_months.max().date()
+
 
 def _norm_date_input(p):
     if isinstance(p, tuple) and len(p) == 2:
@@ -65,9 +66,9 @@ def _norm_date_input(p):
 def pick_domains_for_range(dfs: list[pd.DataFrame], model: str, start_date, end_date):
     doms = set()
     for df in dfs:
-        if df.empty:
+        if df.empty or "month" not in df.columns:
             continue
-        m = df[(df["day"] >= start_date) & (df["day"] <= end_date)].copy()
+        m = df[(df["month"].dt.date >= start_date) & (df["month"].dt.date <= end_date)].copy()
         if model and "model" in m.columns:
             m = m[m["model"] == model]
         if "source_domain" in m.columns:
@@ -77,11 +78,11 @@ def pick_domains_for_range(dfs: list[pd.DataFrame], model: str, start_date, end_
 def filter_slice(df: pd.DataFrame, model: str, start_date, end_date, domains: set | None):
     if df.empty:
         return df
-    m = df[(df["day"] >= start_date) & (df["day"] <= end_date)].copy()
+    m = df[(df["month"].dt.date >= start_date) & (df["month"].dt.date <= end_date)].copy()
     if model and "model" in m.columns:
         m = m[m["model"] == model]
     if domains and "source_domain" in m.columns:
-        m = m[m["source_domain"].isin(domains)].copy()
+        m = m[m["source_domain"].isin(domains)]
     return m
 
 def total_articles_from_stance(stance_slice: pd.DataFrame) -> int:
@@ -124,7 +125,7 @@ if not available_models:
 
 min_dt, max_dt = global_date_bounds([themes_df, stance_df, meso_df])
 if not min_dt or not max_dt:
-    st.error("No valid 'day' column found in aggregates.")
+    st.error("No valid 'month' column found in aggregates.")
     st.stop()
 
 # Filter A
@@ -171,14 +172,14 @@ domains_2 = set(domains_2_selected) if domains_2_selected else None
 
 # Macros
 st.sidebar.subheader("Macros")
-min_support = st.sidebar.slider("Min combined article support", 0, 50, 0, 1)
+min_support = st.sidebar.slider("Min combined article support", 0, 1000, 100, 1)
 top_n = st.sidebar.slider("Top N items (by |difference|)", 5, 40, 20, 1)
 
 
 st.sidebar.markdown("---")
-if st.sidebar.button("🧹 Clear Cache (if slow)"):
-    st.cache_data.clear()
-    st.success("Cache cleared! Refresh to reload data.")
+# if st.sidebar.button("🧹 Clear Cache (if slow)"):
+#     st.cache_data.clear()
+#     st.success("Cache cleared! Refresh to reload data.")
 
 # ------------------------------------------------------------
 # Compute contrast using aggregates
@@ -274,7 +275,7 @@ if not themes_contrast.empty:
 
     themes_bar = alt.Chart(melt_themes).mark_bar().encode(
         x=alt.X("signed_prev:Q", title="Prevalence (% of relevant articles)", scale=alt.Scale(domain=[-x_limit_t, x_limit_t], nice=False), axis=alt.Axis(format=".0%")),
-        y=alt.Y("narrative theme:N", sort=theme_order, title="Theme", axis=alt.Axis(labelLimit=0, labelOverlap=False)),
+        y=alt.Y("narrative theme:N", sort=theme_order, title="Theme", axis=alt.Axis(labelLimit=0, labelOverlap=False, titlePadding=120)),
         color=alt.Color("side_key:N", title=None, scale=alt.Scale(domain=["A", "B"], range=["#d7191c", "#2c7bb6"]), legend=alt.Legend(orient="top")),
         tooltip=[
             alt.Tooltip("narrative theme:N", title="Theme"),
@@ -310,7 +311,7 @@ if not meso_contrast.empty:
 
     meso_bar = alt.Chart(melt_meso).mark_bar().encode(
         x=alt.X("signed_prev:Q", title="Prevalence (% of relevant articles)", scale=alt.Scale(domain=[-x_limit_m, x_limit_m], nice=False), axis=alt.Axis(format=".0%")),
-        y=alt.Y("meso narrative:N", sort=meso_order, title="Meso Narrative", axis=alt.Axis(labelLimit=0, labelOverlap=False, titlePadding=250)),
+        y=alt.Y("meso narrative:N", sort=meso_order, title="Meso Narrative", axis=alt.Axis(labelLimit=0, labelOverlap=False, titlePadding=220)),
         # y=alt.Y("meso_narrative:N", sort=meso_order, axis=alt.Axis(labelLimit=0, labelOverlap=False,titleAngle=270, titlePadding=300, labelPadding=6), title="Meso Narrative"),
         color=alt.Color("side_key:N", title=None, scale=alt.Scale(domain=["A", "B"], range=["#d7191c", "#2c7bb6"]), legend=alt.Legend(orient="top")),
         tooltip=[

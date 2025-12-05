@@ -10,19 +10,20 @@ st.title("Aggregative Dashboard")
 
 # Use precomputed aggregates from ~/data
 DATA_DIR = os.path.expanduser("./data")
-STANCE_PATH = os.path.join(DATA_DIR, "stance_daily.parquet")
-THEMES_PATH = os.path.join(DATA_DIR, "themes_daily.parquet")
-MESO_PATH = os.path.join(DATA_DIR, "meso_daily.parquet")
+STANCE_PATH = os.path.join(DATA_DIR, "stance_monthly.parquet")
+THEMES_PATH = os.path.join(DATA_DIR, "themes_monthly.parquet")
+MESO_PATH = os.path.join(DATA_DIR, "meso_monthly.parquet")
 
-@st.cache_data(ttl="30m", show_spinner=True, max_entries=1)
+# @st.cache_data(ttl="30m", show_spinner=True, max_entries=1)
 def load_parquets(stance_fp: str, themes_fp: str, meso_fp: str):
     def _read_parquet(fp):
         if not os.path.exists(fp):
             return pd.DataFrame()
         df = pd.read_parquet(fp)
         # Normalize expected columns
-        if "day" in df.columns:
-            df["day"] = pd.to_datetime(df["day"], errors="coerce").dt.date
+        if "month" in df.columns:
+            # Convert YYYY-MM string to datetime for filtering
+            df["month"] = pd.to_datetime(df["month"] + "-01", errors="coerce")
         if "source_domain" in df.columns:
             df["source_domain"] = df["source_domain"].fillna("").astype(str)
         if "model" in df.columns:
@@ -39,7 +40,7 @@ def load_parquets(stance_fp: str, themes_fp: str, meso_fp: str):
 stance_df, themes_df, meso_df = load_parquets(STANCE_PATH, THEMES_PATH, MESO_PATH)
 
 if stance_df.empty and themes_df.empty and meso_df.empty:
-    st.error(f"No aggregates found in {DATA_DIR}. Make sure stance_daily.parquet, themes_daily.parquet, meso_daily.parquet exist.")
+    st.error(f"No aggregates found in {DATA_DIR}. Make sure stance_monthly.parquet, themes_monthly.parquet, meso_monthly.parquet exist.")
     st.stop()
 
 # Sidebar: model selector (single model for now, e.g., 'gpt-oss-20b')
@@ -64,12 +65,12 @@ meso_df = by_model(meso_df)
 # Date range bounds from filtered-by-model data
 date_cols = []
 for df in (stance_df, themes_df, meso_df):
-    if not df.empty and "day" in df.columns:
-        date_cols.append(pd.Series(df["day"]))
+    if not df.empty and "month" in df.columns:
+        date_cols.append(pd.Series(df["month"]))
 if date_cols:
-    all_days = pd.concat(date_cols, ignore_index=True).dropna()
-    min_dt = all_days.min()
-    max_dt = all_days.max()
+    all_months = pd.concat(date_cols, ignore_index=True).dropna()
+    min_dt = all_months.min().date()
+    max_dt = all_months.max().date()
 else:
     min_dt = max_dt = None
 
@@ -89,9 +90,10 @@ else:
     start_date = end_date = None
 
 def filter_by_date(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty or "day" not in df.columns or not start_date or not end_date:
+    if df.empty or "month" not in df.columns or not start_date or not end_date:
         return df
-    return df[(df["day"] >= start_date) & (df["day"] <= end_date)].copy()
+    # Convert date picker values to month start for comparison
+    return df[(df["month"].dt.date >= start_date) & (df["month"].dt.date <= end_date)].copy()
 
 stance_f = filter_by_date(stance_df)
 themes_f = filter_by_date(themes_df)
@@ -118,9 +120,9 @@ def filter_by_domain(df: pd.DataFrame) -> pd.DataFrame:
     return df[df["source_domain"].isin(selected_domains)].copy()
 
 st.sidebar.markdown("---")
-if st.sidebar.button("🧹 Clear Cache (if slow)"):
-    st.cache_data.clear()
-    st.success("Cache cleared! Refresh to reload data.")
+# if st.sidebar.button("🧹 Clear Cache (if slow)"):
+#     st.cache_data.clear()
+#     st.success("Cache cleared! Refresh to reload data.")
 
 stance_f = filter_by_domain(stance_f)
 themes_f = filter_by_domain(themes_f)
@@ -128,7 +130,7 @@ meso_f = filter_by_domain(meso_f)
 
 # Macros (from 03_Contrastive_Dashboard) + apply here
 st.sidebar.subheader("Macros")
-min_support = st.sidebar.slider("Min articles per label", 0, 50, 0, 1)
+min_support = st.sidebar.slider("Min articles per label", 0, 10000, 100, 1)
 top_n = st.sidebar.slider("Top N items", 5, 40, 25, 1)
 
 # 1) Stance bubble chart (aggregate per domain across selected range)
@@ -197,7 +199,7 @@ else:
     h = max(24 * len(themes_top), 360)
     themes_chart = alt.Chart(themes_top).mark_bar().encode(
         x=alt.X("articles:Q", title="# Articles"),
-        y=alt.Y("theme:N", sort="-x", axis=alt.Axis(labelLimit=0, labelOverlap=False), title="Narrative Theme"),
+        y=alt.Y("theme:N", sort="-x", axis=alt.Axis(labelLimit=0, labelOverlap=False,titleAngle=270, titlePadding=70, labelPadding=6), title="Narrative Theme"),
         color=alt.value("#1f77b4"),
         tooltip=[alt.Tooltip("theme:N", title="Theme"), alt.Tooltip("articles:Q", title="# Articles")],
     ).properties(title=f"Top Themes (Model: {selected_model})", height=h)
@@ -219,7 +221,7 @@ else:
     h = max(24 * len(meso_top), 360)
     meso_chart = alt.Chart(meso_top).mark_bar().encode(
         x=alt.X("articles:Q", title="# Articles"),
-        y=alt.Y("meso_narrative:N", sort="-x", axis=alt.Axis(labelLimit=0, labelOverlap=False,titleAngle=270, titlePadding=300, labelPadding=6), title="Meso Narrative"),#     y=alt.Y(
+        y=alt.Y("meso_narrative:N", sort="-x", axis=alt.Axis(labelLimit=0, labelOverlap=False,titleAngle=270, titlePadding=200, labelPadding=6), title="Meso Narrative"),#     y=alt.Y(
         tooltip=[alt.Tooltip("meso_narrative:N", title="Meso Narrative"), alt.Tooltip("articles:Q", title="# Articles")],
     ).properties(title=f"Top Meso Narratives (Model: {selected_model})", height=h)
     st.altair_chart(meso_chart, width="stretch")

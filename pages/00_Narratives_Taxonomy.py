@@ -83,7 +83,7 @@ div[data-testid="column"] { padding-left: 0 !important; padding-right: 0 !import
 """, unsafe_allow_html=True)
 
 DATA_DIR   = os.path.expanduser("./data")
-MESO_PATH  = os.path.join(DATA_DIR, "meso_daily.parquet")
+MESO_PATH  = os.path.join(DATA_DIR, "meso_monthly.parquet")
 TAXON_DIR  = os.path.join(os.path.dirname(__file__), "../taxonomy")
 # NEW_MIN_COUNT = 20
 ARTICLES_SLUG = "Narratives_on_Articles"
@@ -93,13 +93,13 @@ REAL_OPTIONS = set(ANNOT_OPTIONS[1:])
 ANNOT_TABLE = "taxonomy_annotations"
 
 # ── Data loaders ───────────────────────────────────────────────────────────────
-@st.cache_data(show_spinner=True, ttl="30m", max_entries=1)
+# @st.cache_data(show_spinner=True, ttl="30m", max_entries=1)
 def load_meso_df(fp: str) -> pd.DataFrame:
     if not os.path.exists(fp):
-        return pd.DataFrame(columns=["day","model","version","source_domain","theme","meso_narrative","count"])
+        return pd.DataFrame(columns=["month","model","version","source_domain","theme","meso_narrative","count"])
     df = pd.read_parquet(fp)
-    if "day" in df.columns:
-        df["day"] = pd.to_datetime(df["day"], errors="coerce").dt.date
+    if "month" in df.columns:
+        df["month"] = df["month"].astype(str)  # Keep as YYYY-MM string
     for c in ["source_domain","model","theme","meso_narrative"]:
         if c in df.columns:
             df[c] = df[c].fillna("").astype(str)
@@ -109,7 +109,7 @@ def load_meso_df(fp: str) -> pd.DataFrame:
         df["version"] = pd.to_numeric(df["version"], errors="coerce").fillna(0).astype(int)
     return df
 
-@st.cache_data(show_spinner=True, ttl="30m", max_entries=1)
+# @st.cache_data(show_spinner=True, ttl="30m", max_entries=1)
 def list_revisions() -> list[int]:
     if not os.path.isdir(TAXON_DIR):
         return []
@@ -120,7 +120,7 @@ def list_revisions() -> list[int]:
             revs.append(int(m.group(1)))
     return sorted(set(revs))
 
-@st.cache_data(show_spinner=True, ttl="30m", max_entries=1)
+# @st.cache_data(show_spinner=True, ttl="30m", max_entries=1)
 def load_taxonomy(revision: int) -> dict[str, list[str]]:
     path = os.path.join(TAXON_DIR, f"meso_narratives_revision_{revision}.py")
     if not os.path.exists(path):
@@ -145,7 +145,7 @@ def load_taxonomy(revision: int) -> dict[str, list[str]]:
             out[str(k)] = [str(x) for x in v if isinstance(x, str)]
     return out
 
-@st.cache_data(show_spinner=False, ttl="30m", max_entries=1)
+# @st.cache_data(show_spinner=False, ttl="30m", max_entries=1)
 def fetch_user_annotations(user_id: str | None, revision: int) -> dict[tuple[str,str], str]:
     if not user_id:
         return {}
