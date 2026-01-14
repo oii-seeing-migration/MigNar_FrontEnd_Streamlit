@@ -17,3 +17,6 @@ env/
 # Test notebooks
 
 pages/test.*.ipynb
+
+plots_for_paper.ipynb
+plots_for_paper/*
