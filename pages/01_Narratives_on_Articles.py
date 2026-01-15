@@ -1,4 +1,5 @@
 import os, json, re
+from collections import Counter
 import pandas as pd
 import streamlit as st
 from difflib import SequenceMatcher
@@ -54,22 +55,50 @@ for c in [THEME_COL, MESO_SAMPLE_COL, "title", "body"]:
     if c and c in df.columns:
         df[c] = df[c].astype(str)
 
-def gather_meso_set(row: pd.Series):
-    out = set()
+def count_models_per_meso(row: pd.Series):
+    """Returns dict mapping meso_narrative -> set of models that detected it"""
+    meso_models = {}
     for col in row.index:
         if isinstance(col, str) and col.startswith("annotation_parsed_"):
+            model_name = col[len("annotation_parsed_"):]
             arr = safe_json_load(row[col])
             if isinstance(arr, list):
                 for obj in arr:
                     if isinstance(obj, dict):
                         mn = obj.get("meso narrative")
                         if isinstance(mn, str) and mn.strip():
-                            out.add(mn.strip())
-    return out
+                            mn_key = mn.strip()
+                            if mn_key not in meso_models:
+                                meso_models[mn_key] = set()
+                            meso_models[mn_key].add(model_name)
+    return meso_models
 
+def gather_meso_set(row: pd.Series):
+    """Legacy function - returns all meso narratives regardless of agreement"""
+    return set(row["_meso_models_dict"].keys())
+
+df["_meso_models_dict"] = df.apply(count_models_per_meso, axis=1)
 df["_meso_all_set"] = df.apply(gather_meso_set, axis=1)
 
 st.sidebar.header("Filters")
+
+# Extract available models from column names
+available_models = []
+for col in df.columns:
+    if isinstance(col, str) and col.startswith("annotation_parsed_"):
+        model_name = col[len("annotation_parsed_"):]
+        available_models.append(model_name)
+available_models = sorted(set(available_models))
+
+# Min Models Agreement slider
+min_agreement = st.sidebar.slider(
+    "Min Models Agreement",
+    min_value=1,
+    max_value=len(available_models),
+    value=2,
+    help="Minimum number of models that must agree on a meso narrative for it to appear in the dropdown"
+)
+
 source_options = ["(All)"] + (sorted(df["source_table"].unique()) if "source_table" in df.columns else [])
 src_choice = st.sidebar.selectbox("Source Table", source_options, index=0)
 work_df = df if src_choice == "(All)" or "source_table" not in df.columns else df[df["source_table"] == src_choice]
@@ -85,13 +114,23 @@ if THEME_COL:
 else:
     theme_choice = "(All)"
 
-all_meso_values = sorted({m for s in work_df["_meso_all_set"] for m in s})
+# Filter meso narratives by agreement threshold
+def filter_meso_by_agreement(meso_models_dict, min_agree):
+    """Returns set of meso narratives that have >= min_agree models"""
+    return {meso for meso, models in meso_models_dict.items() if len(models) >= min_agree}
+
+work_df["_meso_filtered_set"] = work_df["_meso_models_dict"].apply(
+    lambda d: filter_meso_by_agreement(d, min_agreement)
+)
+
+all_meso_values = sorted({m for s in work_df["_meso_filtered_set"] for m in s})
 if pre_meso not in all_meso_values:
     pre_meso = None
-meso_choice = st.sidebar.selectbox("Meso Narrative (any model)", ["(All)"] + all_meso_values,
+meso_choice = st.sidebar.selectbox("Meso Narrative (≥{} models)".format(min_agreement), 
+                                   ["(All)"] + all_meso_values,
                                    index=(all_meso_values.index(pre_meso) + 1) if pre_meso else 0)
 if meso_choice != "(All)":
-    work_df = work_df[work_df["_meso_all_set"].apply(lambda s: meso_choice in s)]
+    work_df = work_df[work_df["_meso_filtered_set"].apply(lambda s: meso_choice in s)]
 selected_meso = meso_choice if meso_choice != "(All)" else None
 
 def sync_params(th, mn):
@@ -136,6 +175,7 @@ st.caption(f"Source: {row.get('source_table','')} | Date: {row.get('pub_date',''
 body_text = row.get("body", "") or ""
 
 def extract_all_model_narratives(r: pd.Series):
+    """Extract ALL narratives from ALL models (no filtering)"""
     out = []
     for col in r.index:
         if isinstance(col, str) and col.startswith("annotation_parsed_"):
@@ -163,8 +203,8 @@ all_ann_frag_objs = extract_all_model_narratives(row)
 
 def normalize_text(t: str) -> str:
     t = t.strip()
-    t = re.sub(r"[‘’]", "'", t)
-    t = re.sub(r"[“”]", '"', t)
+    t = re.sub(r"['']", "'", t)
+    t = re.sub(r'[""]', '"', t)
     t = t.replace("–", "-").replace("—", "-")
     return re.sub(r"\s+", " ", t)
 
