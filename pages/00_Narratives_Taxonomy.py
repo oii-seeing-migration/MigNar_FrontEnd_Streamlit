@@ -86,10 +86,6 @@ REAL_OPTIONS = set(ANNOT_OPTIONS[1:])
 REAL_THEME_OPTIONS = set(THEME_ANNOT_OPTIONS[1:])
 ANNOT_TABLE = "taxonomy_annotations"
 
-# ── Session state for pending changes ──────────────────────────────────────────
-if "pending_annotations" not in st.session_state:
-    st.session_state.pending_annotations = {}
-
 # ── Data loaders ───────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=True, ttl="30m", max_entries=1)
 def load_meso_df(fp: str) -> pd.DataFrame:
@@ -159,25 +155,33 @@ def fetch_user_annotations(user_id: str | None, revision: int) -> dict[tuple[str
         return {}
 
 # ── DB write ───────────────────────────────────────────────────────────────────
-def upsert_annotation(user: dict, revision: int, theme: str, meso: str, label: str, comment: str) -> bool:
-    try:
-        uid = AUTH_UID or user.get("id")
-        if not uid:
-            return False
-        payload = {
-            "user_id": str(uid),
-            "user_name": user.get("name"),
-            "theme": theme,
-            "meso": meso,
-            "revision": revision,
-            "label": label,
-            "comment": comment,
-        }
-        supabase.table(ANNOT_TABLE).upsert(payload, on_conflict="user_id,revision,theme,meso").execute()
-        return True
-    except Exception as e:
-        st.error(f"Failed to save annotation: {e}")
-        return False
+def batch_upsert_annotations(user: dict, revision: int, annotations: dict) -> tuple[int, int]:
+    """Batch upsert all annotations. Returns (success_count, fail_count)"""
+    uid = AUTH_UID or user.get("id")
+    if not uid:
+        return (0, len(annotations))
+    
+    success_count = 0
+    fail_count = 0
+    
+    for key, (label, comment) in annotations.items():
+        theme, meso = key
+        try:
+            payload = {
+                "user_id": str(uid),
+                "user_name": user.get("name"),
+                "theme": theme,
+                "meso": meso,
+                "revision": revision,
+                "label": label,
+                "comment": comment,
+            }
+            supabase.table(ANNOT_TABLE).upsert(payload, on_conflict="user_id,revision,theme,meso").execute()
+            success_count += 1
+        except Exception:
+            fail_count += 1
+    
+    return (success_count, fail_count)
 
 # ── Load data ──────────────────────────────────────────────────────────────────
 meso_df = load_meso_df(MESO_PATH)
@@ -202,7 +206,8 @@ taxonomy = load_taxonomy(chosen_rev)
 srcs = sorted(meso_df.source_domain.unique()) if "source_domain" in meso_df.columns else []
 models = sorted(meso_df.model.unique()) if "model" in meso_df.columns else []
 source_choice = st.sidebar.selectbox("Source Domain", ["(All sources)"] + srcs, index=0)
-model_choice = st.sidebar.selectbox("Model", ["(All models)"] + models, index=0)
+model_choice = st.sidebar.selectbox("Model", ["(All models)"] + models, 
+                                    index=models.index("Ensemble") + 1 if "Ensemble" in models else 0)
 source_filter = None if source_choice == "(All sources)" else source_choice
 model_filter = None if model_choice == "(All models)" else model_choice
 
@@ -211,7 +216,7 @@ NEW_MIN_COUNT = st.sidebar.number_input(
     "Min count for new narratives",
     min_value=1,
     max_value=500,
-    value=50,
+    value=20,  # Changed from 50 to 20
     step=5,
     help="Minimum article count required to display new narratives not in the taxonomy"
 )
@@ -219,48 +224,15 @@ NEW_MIN_COUNT = st.sidebar.number_input(
 # ── Main content ───────────────────────────────────────────────────────────────
 st.title(f"Meso Narratives Taxonomy (Revision {chosen_rev})")
 
-# ── Save button row ────────────────────────────────────────────────────────────
-col1, col2, col3 = st.columns([1, 1, 4])
-with col1:
-    if USER and AUTH_UID and BIND_OK:
-        if st.button("💾 Save All Changes", type="primary", use_container_width=True):
-            if st.session_state.pending_annotations:
-                success_count = 0
-                fail_count = 0
-                for key, (label, comment) in st.session_state.pending_annotations.items():
-                    theme, meso = key
-                    if upsert_annotation(USER, chosen_rev, theme, meso, label, comment):
-                        success_count += 1
-                    else:
-                        fail_count += 1
-                st.session_state.pending_annotations = {}
-                st.cache_data.clear()
-                if fail_count == 0:
-                    st.success(f"✅ Saved {success_count} annotation(s)")
-                else:
-                    st.warning(f"⚠️ Saved {success_count}, failed {fail_count}")
-                st.rerun()
-            else:
-                st.info("No pending changes to save")
-    else:
-        st.button("💾 Save All Changes", type="primary", use_container_width=True, disabled=True)
-
-with col2:
-    pending_count = len(st.session_state.pending_annotations)
-    if pending_count > 0:
-        st.warning(f"⚠️ {pending_count} unsaved")
-    else:
-        st.success("✓ All saved")
-
 # ── Login banner ───────────────────────────────────────────────────────────────
 if USER and AUTH_UID and BIND_OK:
-    st.markdown(f"<div class='login-banner logged'>✅ Signed in as <strong>{USER.get('name') or USER.get('email')}</strong> — Make changes and click Save</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='login-banner logged'>✅ Signed in as <strong>{USER.get('name') or USER.get('email')}</strong> — Make changes and click Save at the bottom</div>", unsafe_allow_html=True)
 elif USER:
     st.markdown("<div class='login-banner'>⚠️ Signed in, but database session not fully bound. Try refreshing the page.</div>", unsafe_allow_html=True)
 else:
     st.markdown("<div class='login-banner'>🔐 You are not signed in. <a href='/'>Sign in</a> to save your annotations.</div>", unsafe_allow_html=True)
 
-st.caption("Review narratives, annotate quality, and explore articles. Your annotations are saved when you click Save All Changes.")
+st.caption("Review narratives, annotate quality, and explore articles. Fill out the form below and click Save All Changes at the bottom.")
 st.info("📖 **New to annotation?** [Read the annotation guide](/Instructions#annotation-guide) to understand what each quality label means and how to use them effectively.")
 
 # ── Filter and aggregate ───────────────────────────────────────────────────────
@@ -311,173 +283,200 @@ def articles_link(theme: str | None = None, meso: str | None = None) -> str:
 def link_button(theme: str, meso: str | None = None, label: str = "View on Articles"):
     st.markdown(f"<a class='open-btn' href='{articles_link(theme, meso)}' target='_blank' rel='noopener'>{label}</a>", unsafe_allow_html=True)
 
-# ── Render themes and narratives ───────────────────────────────────────────────
-for theme in visible_themes_sorted:
-    total = theme_totals.get(theme, 0)
-    in_tax = theme in taxonomy_themes
-    new_theme = not in_tax
-    color = "#e3f2fd" if in_tax else "#fff3e0"
-    base_list, extras = theme_narr_map.get(theme, ([], []))
-
-    st.markdown(
-        f"<div class='theme-box' style='background:{color};'>"
-        f"<div class='theme-left'>Theme: {theme}</div>"
-        f"<div class='theme-right'>Total: {total}{' • NEW theme' if new_theme else ''}</div>"
-        "</div>", unsafe_allow_html=True
-    )
-
-    # Theme-level annotation row
-    theme_key = (theme, "")
-    theme_label_prev, theme_comment_prev = prefill_map.get(theme_key, ("", ""))
+# ── FORM: Wrap all annotations in a form to prevent reloads ────────────────────
+with st.form(key="annotation_form", clear_on_submit=False):
+    form_data = {}
     
-    # Check if there's a pending change for this theme
-    if theme_key in st.session_state.pending_annotations:
-        theme_label_prev, theme_comment_prev = st.session_state.pending_annotations[theme_key]
-    
-    theme_annot_row = st.columns([0.18, 0.37, 0.15, 0.15, 0.15])
-    with theme_annot_row[0]:
-        link_button(theme, None, "View on Articles")
-    with theme_annot_row[1]:
-        if USER and AUTH_UID and BIND_OK:
-            theme_comment = st.text_input(
-                "Theme comment",
-                value=theme_comment_prev,
-                key=f"theme_comment::{chosen_rev}::{theme}",
-                placeholder="Add comment about this theme...",
-                label_visibility="collapsed"
-            )
-        else:
-            theme_comment = theme_comment_prev
-            st.text_input(
-                "Theme comment",
-                value="",
-                key=f"theme_comment::{chosen_rev}::{theme}",
-                placeholder="Sign in to comment",
-                disabled=True,
-                label_visibility="collapsed"
-            )
-    with theme_annot_row[2]:
-        st.markdown(f"<div style='text-align:right; padding:8px 10px; color:#666;'><em>Theme level</em></div>", unsafe_allow_html=True)
-    with theme_annot_row[3]:
-        if USER and AUTH_UID and BIND_OK:
-            theme_idx = (THEME_ANNOT_OPTIONS.index(theme_label_prev) if theme_label_prev in THEME_ANNOT_OPTIONS else 0)
-            theme_choice = st.selectbox(
-                "theme quality",
-                THEME_ANNOT_OPTIONS,
-                index=theme_idx,
-                key=f"theme_annot::{chosen_rev}::{theme}",
-                label_visibility="collapsed",
-                format_func=lambda v: ("—" if v == "" else v),
-                help="Rate the quality of this theme"
-            )
-            # Track changes
-            saved_label, saved_comment = prefill_map.get(theme_key, ("", ""))
-            if (theme_choice != saved_label) or (theme_comment != saved_comment):
-                st.session_state.pending_annotations[theme_key] = (theme_choice, theme_comment)
-            elif theme_key in st.session_state.pending_annotations:
-                # Remove from pending if reverted to saved state
-                del st.session_state.pending_annotations[theme_key]
-        else:
-            st.selectbox(
-                "theme quality",
-                THEME_ANNOT_OPTIONS,
-                index=0,
-                key=f"theme_annot::{chosen_rev}::{theme}",
-                label_visibility="collapsed",
-                format_func=lambda v: ("—" if v == "" else v),
-                disabled=True,
-                help="Sign in to annotate"
-            )
-    with theme_annot_row[4]:
-        # Empty column for alignment
-        st.empty()
+    # ── Render themes and narratives ───────────────────────────────────────────
+    for theme in visible_themes_sorted:
+        total = theme_totals.get(theme, 0)
+        in_tax = theme in taxonomy_themes
+        new_theme = not in_tax
+        color = "#e3f2fd" if in_tax else "#fff3e0"
+        base_list, extras = theme_narr_map.get(theme, ([], []))
 
-    # Header for meso narratives
-    header = st.columns([0.18, 0.37, 0.15, 0.15, 0.15])
-    with header[0]: 
-        st.markdown("<small>&nbsp;</small>", unsafe_allow_html=True)
-    with header[1]: 
-        st.markdown("<small style='padding-left:10px;'><strong>Meso Narratives</strong></small>", unsafe_allow_html=True)
-    with header[2]: 
-        st.markdown("<small style='text-align:right; display:block;'><strong>Count</strong></small>", unsafe_allow_html=True)
-    with header[3]: 
-        st.markdown("<small style='text-align:center; display:block;'><strong>Quality</strong></small>", unsafe_allow_html=True)
-    with header[4]: 
-        st.markdown("<small style='text-align:center; display:block;'><strong>Comment</strong></small>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div class='theme-box' style='background:{color};'>"
+            f"<div class='theme-left'>Theme: {theme}</div>"
+            f"<div class='theme-right'>Total: {total}{' • NEW theme' if new_theme else ''}</div>"
+            "</div>", unsafe_allow_html=True
+        )
 
-    # Meso narratives
-    for mn in base_list + extras:
-        cnt = counts.get((theme, mn), 0)
-        is_new = (mn in extras) or new_theme or (mn not in base_list and not in_tax)
-        row_bg = "#fafafa" if not is_new else "#fff8e1"
-
-        narr_key = (theme, mn)
-        prev_label, prev_comment = prefill_map.get(narr_key, ("", ""))
+        # Theme-level annotation row
+        theme_key = (theme, "")
+        theme_label_prev, theme_comment_prev = prefill_map.get(theme_key, ("", ""))
         
-        # Check if there's a pending change
-        if narr_key in st.session_state.pending_annotations:
-            prev_label, prev_comment = st.session_state.pending_annotations[narr_key]
-        
-        key_sel = f"annot::{chosen_rev}::{theme}::{mn}"
-        key_comment = f"comment::{chosen_rev}::{theme}::{mn}"
-
-        row = st.columns([0.18, 0.37, 0.15, 0.15, 0.15])
-        with row[0]:
-            link_button(theme, mn, "View on Articles")
-        with row[1]:
-            new_tag = " <em style='color:#c77;'>(NEW)</em>" if is_new else ""
-            st.markdown(f"<div class='narr-row' style='background:{row_bg};'><span class='narr-text'>{mn}{new_tag}</span></div>", unsafe_allow_html=True)
-        with row[2]:
-            st.markdown(f"<div style='text-align:right; padding:8px 10px;'><span class='narr-count'>{cnt}</span></div>", unsafe_allow_html=True)
-        with row[3]:
+        theme_annot_row = st.columns([0.18, 0.37, 0.15, 0.15, 0.15])
+        with theme_annot_row[0]:
+            link_button(theme, None, "View on Articles")
+        with theme_annot_row[1]:
             if USER and AUTH_UID and BIND_OK:
-                idx = (ANNOT_OPTIONS.index(prev_label) if prev_label in ANNOT_OPTIONS else 0)
-                choice = st.selectbox(
-                    "quality",
-                    ANNOT_OPTIONS,
-                    index=idx,
-                    key=key_sel,
+                theme_comment = st.text_input(
+                    "Theme comment",
+                    value=theme_comment_prev,
+                    key=f"theme_comment::{chosen_rev}::{theme}",
+                    placeholder="Add comment about this theme...",
+                    label_visibility="collapsed"
+                )
+                form_data[f"theme_comment::{theme}"] = theme_comment
+            else:
+                st.text_input(
+                    "Theme comment",
+                    value="",
+                    key=f"theme_comment::{chosen_rev}::{theme}",
+                    placeholder="Sign in to comment",
+                    disabled=True,
+                    label_visibility="collapsed"
+                )
+        with theme_annot_row[2]:
+            st.markdown(f"<div style='text-align:right; padding:8px 10px; color:#666;'><em>Theme level</em></div>", unsafe_allow_html=True)
+        with theme_annot_row[3]:
+            if USER and AUTH_UID and BIND_OK:
+                theme_idx = (THEME_ANNOT_OPTIONS.index(theme_label_prev) if theme_label_prev in THEME_ANNOT_OPTIONS else 0)
+                theme_choice = st.selectbox(
+                    "theme quality",
+                    THEME_ANNOT_OPTIONS,
+                    index=theme_idx,
+                    key=f"theme_annot::{chosen_rev}::{theme}",
                     label_visibility="collapsed",
                     format_func=lambda v: ("—" if v == "" else v),
-                    help="Rate the quality of this narrative"
+                    help="Rate the quality of this theme"
                 )
+                form_data[f"theme_annot::{theme}"] = theme_choice
             else:
-                choice = prev_label
                 st.selectbox(
-                    "quality",
-                    ANNOT_OPTIONS,
+                    "theme quality",
+                    THEME_ANNOT_OPTIONS,
                     index=0,
-                    key=key_sel,
+                    key=f"theme_annot::{chosen_rev}::{theme}",
                     label_visibility="collapsed",
                     format_func=lambda v: ("—" if v == "" else v),
                     disabled=True,
                     help="Sign in to annotate"
                 )
-        with row[4]:
-            if USER and AUTH_UID and BIND_OK:
-                comment = st.text_input(
-                    "comment",
-                    value=prev_comment,
-                    key=key_comment,
-                    placeholder="Add comment...",
-                    label_visibility="collapsed"
-                )
-                # Track changes
+        with theme_annot_row[4]:
+            st.empty()
+
+        # Header for meso narratives
+        header = st.columns([0.18, 0.37, 0.15, 0.15, 0.15])
+        with header[0]: 
+            st.markdown("<small>&nbsp;</small>", unsafe_allow_html=True)
+        with header[1]: 
+            st.markdown("<small style='padding-left:10px;'><strong>Meso Narratives</strong></small>", unsafe_allow_html=True)
+        with header[2]: 
+            st.markdown("<small style='text-align:right; display:block;'><strong>Count</strong></small>", unsafe_allow_html=True)
+        with header[3]: 
+            st.markdown("<small style='text-align:center; display:block;'><strong>Quality</strong></small>", unsafe_allow_html=True)
+        with header[4]: 
+            st.markdown("<small style='text-align:center; display:block;'><strong>Comment</strong></small>", unsafe_allow_html=True)
+
+        # Meso narratives
+        for mn in base_list + extras:
+            cnt = counts.get((theme, mn), 0)
+            is_new = (mn in extras) or new_theme or (mn not in base_list and not in_tax)
+            row_bg = "#fafafa" if not is_new else "#fff8e1"
+
+            narr_key = (theme, mn)
+            prev_label, prev_comment = prefill_map.get(narr_key, ("", ""))
+            
+            key_sel = f"annot::{chosen_rev}::{theme}::{mn}"
+            key_comment = f"comment::{chosen_rev}::{theme}::{mn}"
+
+            row = st.columns([0.18, 0.37, 0.15, 0.15, 0.15])
+            with row[0]:
+                link_button(theme, mn, "View on Articles")
+            with row[1]:
+                new_tag = " <em style='color:#c77;'>(NEW)</em>" if is_new else ""
+                st.markdown(f"<div class='narr-row' style='background:{row_bg};'><span class='narr-text'>{mn}{new_tag}</span></div>", unsafe_allow_html=True)
+            with row[2]:
+                st.markdown(f"<div style='text-align:right; padding:8px 10px;'><span class='narr-count'>{cnt}</span></div>", unsafe_allow_html=True)
+            with row[3]:
+                if USER and AUTH_UID and BIND_OK:
+                    idx = (ANNOT_OPTIONS.index(prev_label) if prev_label in ANNOT_OPTIONS else 0)
+                    choice = st.selectbox(
+                        "quality",
+                        ANNOT_OPTIONS,
+                        index=idx,
+                        key=key_sel,
+                        label_visibility="collapsed",
+                        format_func=lambda v: ("—" if v == "" else v),
+                        help="Rate the quality of this narrative"
+                    )
+                    form_data[f"meso_annot::{theme}::{mn}"] = choice
+                else:
+                    st.selectbox(
+                        "quality",
+                        ANNOT_OPTIONS,
+                        index=0,
+                        key=key_sel,
+                        label_visibility="collapsed",
+                        format_func=lambda v: ("—" if v == "" else v),
+                        disabled=True,
+                        help="Sign in to annotate"
+                    )
+            with row[4]:
+                if USER and AUTH_UID and BIND_OK:
+                    comment = st.text_input(
+                        "comment",
+                        value=prev_comment,
+                        key=key_comment,
+                        placeholder="Add comment...",
+                        label_visibility="collapsed"
+                    )
+                    form_data[f"meso_comment::{theme}::{mn}"] = comment
+                else:
+                    st.text_input(
+                        "comment",
+                        value="",
+                        key=key_comment,
+                        placeholder="Sign in to comment",
+                        disabled=True,
+                        label_visibility="collapsed"
+                    )
+    
+    # Submit button at the bottom of form
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1, 1, 4])
+    with col1:
+        submitted = st.form_submit_button("💾 Save All Changes", type="primary", use_container_width=True, disabled=not (USER and AUTH_UID and BIND_OK))
+    with col2:
+        if submitted:
+            st.info("Saving...")
+    
+    # Process form submission
+    if submitted and USER and AUTH_UID and BIND_OK:
+        # Collect all changed annotations
+        annotations_to_save = {}
+        
+        for theme in visible_themes_sorted:
+            # Theme annotations
+            theme_key = (theme, "")
+            saved_label, saved_comment = prefill_map.get(theme_key, ("", ""))
+            new_label = form_data.get(f"theme_annot::{theme}", "")
+            new_comment = form_data.get(f"theme_comment::{theme}", "")
+            if (new_label != saved_label) or (new_comment != saved_comment):
+                annotations_to_save[theme_key] = (new_label, new_comment)
+            
+            # Meso annotations
+            base_list, extras = theme_narr_map.get(theme, ([], []))
+            for mn in base_list + extras:
+                narr_key = (theme, mn)
                 saved_label, saved_comment = prefill_map.get(narr_key, ("", ""))
-                if (choice != saved_label) or (comment != saved_comment):
-                    st.session_state.pending_annotations[narr_key] = (choice, comment)
-                elif narr_key in st.session_state.pending_annotations:
-                    # Remove from pending if reverted to saved state
-                    del st.session_state.pending_annotations[narr_key]
+                new_label = form_data.get(f"meso_annot::{theme}::{mn}", "")
+                new_comment = form_data.get(f"meso_comment::{theme}::{mn}", "")
+                if (new_label != saved_label) or (new_comment != saved_comment):
+                    annotations_to_save[narr_key] = (new_label, new_comment)
+        
+        if annotations_to_save:
+            success, fail = batch_upsert_annotations(USER, chosen_rev, annotations_to_save)
+            st.cache_data.clear()
+            if fail == 0:
+                st.success(f"✅ Saved {success} annotation(s)")
             else:
-                st.text_input(
-                    "comment",
-                    value="",
-                    key=key_comment,
-                    placeholder="Sign in to comment",
-                    disabled=True,
-                    label_visibility="collapsed"
-                )
+                st.warning(f"⚠️ Saved {success}, failed {fail}")
+            st.rerun()
+        else:
+            st.info("No changes to save")
 
 # ── Footer stats ───────────────────────────────────────────────────────────────
 st.markdown("---")
