@@ -133,7 +133,7 @@ st.sidebar.markdown("#### Filter A")
 selected_model_A = st.sidebar.selectbox(
     "Model (A)",
     options=available_models,
-    index=available_models.index("gpt-oss-20b") if "gpt-oss-20b" in available_models else 0,
+    index=available_models.index("Ensemble") if "Ensemble" in available_models else 0,
     key="model_a",
 )
 period_1_in = st.sidebar.date_input(
@@ -154,7 +154,7 @@ st.sidebar.markdown("#### Filter B")
 selected_model_B = st.sidebar.selectbox(
     "Model (B)",
     options=available_models,
-    index=available_models.index("gpt-oss-20b") if "gpt-oss-20b" in available_models else 0,
+    index=available_models.index("Ensemble") if "Ensemble" in available_models else 0,
     key="model_b",
 )
 period_2_in = st.sidebar.date_input(

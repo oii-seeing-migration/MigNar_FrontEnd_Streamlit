@@ -50,7 +50,7 @@ available_models = sorted(set(
     list(themes_df.get("model", pd.Series(dtype=str)).unique() if "model" in themes_df else []) +
     list(meso_df.get("model", pd.Series(dtype=str)).unique() if "model" in meso_df else [])
 ))
-default_model = "gpt-oss-20b" if "gpt-oss-20b" in available_models else (available_models[0] if available_models else None)
+default_model = "Ensemble" if "Ensemble" in available_models else (available_models[0] if available_models else None)
 selected_model = st.sidebar.selectbox("Model", options=available_models, index=available_models.index(default_model) if default_model in available_models else 0)
 
 def by_model(df: pd.DataFrame) -> pd.DataFrame:
