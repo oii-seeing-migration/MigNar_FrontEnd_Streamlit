@@ -8,7 +8,7 @@ st.set_page_config(
 
 st.title("📝 Instructions for Annotators")
 
-st.info("These notes guide annotators assessing themes and meso narratives in the **Seeing Migration Narratives (MigNar)** app.")
+st.info("These notes guide annotators assessing themes and meso narratives in the **[Seeing Migration Narratives (MigNar)](https://mignar.streamlit.app/)** app.")
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Introduction
@@ -99,8 +99,8 @@ st.header("Annotation Process")
 
 st.subheader("Step 1: Sign In and Navigate")
 st.markdown("""
-1. Sign in to the MigNar Streamlit app
-2. Navigate to the **"Narratives Taxonomy"** page
+1. Sign in to the [MigNar app](https://mignar.streamlit.app/)
+2. Navigate to the **[Narratives Taxonomy](https://mignar.streamlit.app/Narratives_Taxonomy)** page
 3. You will see **themes highlighted in blue**, with a list of meso narratives underneath each one
 """)
 
@@ -123,7 +123,7 @@ Immediately underneath each blue-highlighted theme, you will see:
 
 st.markdown("**Use the dropdown to select one of the following:**")
 
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 
 with col1:
     st.success("**✅ Good**")
@@ -139,10 +139,15 @@ with col2:
     st.error("**📋 Duplicate**")
     st.markdown("The theme exists elsewhere (even if phrased slightly differently).")
 
-st.markdown("""
-**Additional options:**
-- **Wrong Theme**: You believe the meso narrative should be under a different theme
+with col3:
+    st.markdown("""
+    <div style="padding: 1rem; border-radius: 0.5rem; border: 1px solid #9e9e9e; background-color: #f5f5f5;">
+    <strong>🔀 Wrong Theme</strong>
+    </div>
+    """, unsafe_allow_html=True)
+    st.markdown("The meso narrative should be under a different theme.")
 
+st.markdown("""
 **Comments:**
 - If you think the theme could be reworded to better capture the meso narratives, note this in the comment box
 - If you marked something as **"Duplicate"**, leave a comment mentioning the exact narrative you believe it duplicates
@@ -152,7 +157,7 @@ st.markdown("""
 st.subheader("Step 4: Assess Meso Narratives")
 st.markdown("""
 After assessing the theme, look at its **meso narratives** and undertake the same actions:
-- Use the dropdown to select: **Good**, **Too Broad**, **Too Narrow**, or **Duplicate**
+- Use the dropdown to select: **Good**, **Too Broad**, **Too Narrow**, **Duplicate**, or **Wrong Theme**
 - Add any comments as needed
 """)
 
@@ -160,7 +165,7 @@ st.info("""
 **📰 Viewing Articles**
 
 If you wish to see a random selection of the content used to generate these meso narratives:
-1. Click the **"View on Articles"** button
+1. Click the **"View on Articles"** button (this will take you to the **[Narratives on Articles](https://mignar.streamlit.app/Narratives_on_Articles)** page)
 2. Use the Record menu to browse the articles
 3. See the text the LLMs have identified as relevant to those meso narratives
 
