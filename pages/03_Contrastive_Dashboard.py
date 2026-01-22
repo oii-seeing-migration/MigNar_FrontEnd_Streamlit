@@ -10,6 +10,22 @@ st.set_page_config(page_title="Contrastive Dashboard",
 st.title("Contrastive Dashboard")
 
 # ------------------------------------------------------------
+# UK Media Outlet Groups (for default selection)
+# ------------------------------------------------------------
+UK_LEFT_WING = [
+    "theguardian.com",
+    "mirror.co.uk",
+    "independent.co.uk",
+]
+
+UK_RIGHT_WING = [
+    "telegraph.co.uk",
+    "dailymail.co.uk",
+    "express.co.uk",
+    "thesun.co.uk",
+]
+
+# ------------------------------------------------------------
 # Load precomputed aggregates from ./data (no DB round-trips)
 # ------------------------------------------------------------
 DATA_DIR = os.path.expanduser("./data")
@@ -145,11 +161,12 @@ period_1_in = st.sidebar.date_input(
 )
 period_1 = _norm_date_input(period_1_in)
 domains_1_options = pick_domains_for_range([themes_df, stance_df, meso_df], selected_model_A, period_1[0], period_1[1])
-default_1 = [d for d in domains_1_options if d == "theguardian.com"] or domains_1_options
+# Default to UK left-wing outlets that exist in the data
+default_1 = [d for d in UK_LEFT_WING if d in domains_1_options] or domains_1_options[:3]
 domains_1_selected = st.sidebar.multiselect("Source domain (A)", options=domains_1_options, default=default_1, key="domain_1")
 domains_1 = set(domains_1_selected) if domains_1_selected else None
 
-# Filter B
+# Filter B (Right-wing UK media)
 st.sidebar.markdown("#### Filter B")
 selected_model_B = st.sidebar.selectbox(
     "Model (B)",
@@ -166,7 +183,8 @@ period_2_in = st.sidebar.date_input(
 )
 period_2 = _norm_date_input(period_2_in)
 domains_2_options = pick_domains_for_range([themes_df, stance_df, meso_df], selected_model_B, period_2[0], period_2[1])
-default_2 = [d for d in domains_2_options if d == "telegraph.co.uk"] or domains_2_options
+# Default to UK right-wing outlets that exist in the data
+default_2 = [d for d in UK_RIGHT_WING if d in domains_2_options] or domains_2_options[:3]
 domains_2_selected = st.sidebar.multiselect("Source domain (B)", options=domains_2_options, default=default_2, key="domain_2")
 domains_2 = set(domains_2_selected) if domains_2_selected else None
 
@@ -266,8 +284,8 @@ if not themes_contrast.empty:
         var_name="side_var",
         value_name="prevalence"
     )
-    melt_themes["side_key"] = melt_themes["side_var"].map({"prevalence_1": "A", "prevalence_2": "B"})
-    melt_themes["signed_prev"] = melt_themes.apply(lambda r: -r["prevalence"] if r["side_key"] == "A" else r["prevalence"], axis=1)
+    melt_themes["side_key"] = melt_themes["side_var"].map({"prevalence_1": "Filter A", "prevalence_2": "Filter B"})
+    melt_themes["signed_prev"] = melt_themes.apply(lambda r: -r["prevalence"] if r["side_key"] == "Filter A" else r["prevalence"], axis=1)
 
     theme_order = melt_themes.drop_duplicates("narrative theme").sort_values("diff_prevalence")["narrative theme"].tolist()
     max_val_t = float(melt_themes["prevalence"].max() or 0.0)
@@ -276,7 +294,7 @@ if not themes_contrast.empty:
     themes_bar = alt.Chart(melt_themes).mark_bar().encode(
         x=alt.X("signed_prev:Q", title="Prevalence (% of relevant articles)", scale=alt.Scale(domain=[-x_limit_t, x_limit_t], nice=False), axis=alt.Axis(format=".0%")),
         y=alt.Y("narrative theme:N", sort=theme_order, title="Theme", axis=alt.Axis(labelLimit=0, labelOverlap=False, titlePadding=120)),
-        color=alt.Color("side_key:N", title=None, scale=alt.Scale(domain=["A", "B"], range=["#d7191c", "#2c7bb6"]), legend=alt.Legend(orient="top")),
+        color=alt.Color("side_key:N", title=None, scale=alt.Scale(domain=["Filter A", "Filter B"], range=["#d7191c", "#2c7bb6"]), legend=alt.Legend(orient="top")),
         tooltip=[
             alt.Tooltip("narrative theme:N", title="Theme"),
             alt.Tooltip("side_key:N", title="Filter"),
@@ -284,7 +302,7 @@ if not themes_contrast.empty:
             alt.Tooltip("diff_prevalence:Q", title="(B − A) pp", format=".1%"),
         ],
     )
-    st.subheader("Contrast in Narrative Themes (B minus A)")
+    st.subheader("Contrast in Narrative Themes (Filter B minus Filter A)")
     st.altair_chart(themes_bar, width="stretch")
 
 # ------------------------------------------------------------
@@ -302,8 +320,8 @@ if not meso_contrast.empty:
         var_name="side_var",
         value_name="prevalence"
     )
-    melt_meso["side_key"] = melt_meso["side_var"].map({"prevalence_1": "A", "prevalence_2": "B"})
-    melt_meso["signed_prev"] = melt_meso.apply(lambda r: -r["prevalence"] if r["side_key"] == "A" else r["prevalence"], axis=1)
+    melt_meso["side_key"] = melt_meso["side_var"].map({"prevalence_1": "Filter A", "prevalence_2": "Filter B"})
+    melt_meso["signed_prev"] = melt_meso.apply(lambda r: -r["prevalence"] if r["side_key"] == "Filter A" else r["prevalence"], axis=1)
 
     meso_order = melt_meso.drop_duplicates("meso narrative").sort_values("diff_prevalence")["meso narrative"].tolist()
     max_val_m = float(melt_meso["prevalence"].max() or 0.0)
@@ -312,8 +330,7 @@ if not meso_contrast.empty:
     meso_bar = alt.Chart(melt_meso).mark_bar().encode(
         x=alt.X("signed_prev:Q", title="Prevalence (% of relevant articles)", scale=alt.Scale(domain=[-x_limit_m, x_limit_m], nice=False), axis=alt.Axis(format=".0%")),
         y=alt.Y("meso narrative:N", sort=meso_order, title="Meso Narrative", axis=alt.Axis(labelLimit=0, labelOverlap=False, titlePadding=220)),
-        # y=alt.Y("meso_narrative:N", sort=meso_order, axis=alt.Axis(labelLimit=0, labelOverlap=False,titleAngle=270, titlePadding=300, labelPadding=6), title="Meso Narrative"),
-        color=alt.Color("side_key:N", title=None, scale=alt.Scale(domain=["A", "B"], range=["#d7191c", "#2c7bb6"]), legend=alt.Legend(orient="top")),
+        color=alt.Color("side_key:N", title=None, scale=alt.Scale(domain=["Filter A", "Filter B"], range=["#d7191c", "#2c7bb6"]), legend=alt.Legend(orient="top")),
         tooltip=[
             alt.Tooltip("meso narrative:N", title="Meso Narrative"),
             alt.Tooltip("side_key:N", title="Filter"),
@@ -321,7 +338,7 @@ if not meso_contrast.empty:
             alt.Tooltip("diff_prevalence:Q", title="(B − A) pp", format=".1%"),
         ],
     )
-    st.subheader("Contrast in Meso Narratives (B minus A)")
+    st.subheader("Contrast in Meso Narratives (Filter B minus Filter A)")
     st.altair_chart(meso_bar, width="stretch")
 
 # ------------------------------------------------------------
