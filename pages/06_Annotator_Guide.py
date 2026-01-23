@@ -109,7 +109,7 @@ st.markdown("""
 **Before making any changes or suggestions**, read through the **full list of themes** and ideally skim through the meso narratives so you have a reasonable 
 sense of the whole.""")
 
-st.subheader("Step 3: Assess Each Theme")
+st.subheader("Step 3: Annotate Each Theme and Its Meso Narratives")
 st.markdown("""
 Once you've completed the initial read-through, look at the **first theme** and the meso narratives below it.
 
