@@ -72,6 +72,8 @@ st.markdown("""
 .login-banner { background:#e3f2fd; border:1px solid #90caf9; padding:8px 12px; border-radius:8px; margin-bottom:10px; }
 .login-banner.logged { background:#e8f5e9; border-color:#81c784; }
 div[data-testid="column"] { padding-left: 0 !important; padding-right: 0 !important; }
+.theme-num { font-weight:700; color:#1565c0; margin-right:6px; }
+.meso-num { font-weight:600; color:#666; margin-right:6px; font-size:0.9rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -80,11 +82,20 @@ MESO_PATH  = os.path.join(DATA_DIR, "meso_monthly.parquet")
 TAXON_DIR  = os.path.join(os.path.dirname(__file__), "../taxonomy")
 ARTICLES_SLUG = "Narratives_on_Articles"
 
-ANNOT_OPTIONS = ["", "duplicate narrative", "too specific", "too generic", "good"]
-THEME_ANNOT_OPTIONS = ["", "duplicate theme", "too broad", "too narrow", "good"]
+ANNOT_OPTIONS = ["", "duplicate narrative", "too specific", "too generic", "good", "poor wording", "other issues"]
+THEME_ANNOT_OPTIONS = ["", "duplicate theme", "too broad", "too narrow", "good", "wrong theme", "poor wording", "other issues"]
 REAL_OPTIONS = set(ANNOT_OPTIONS[1:])
 REAL_THEME_OPTIONS = set(THEME_ANNOT_OPTIONS[1:])
 ANNOT_TABLE = "taxonomy_annotations"
+
+# Sources to exclude by default (US Congress and UK Parliament party breakdowns)
+EXCLUDED_SOURCES_DEFAULT = {
+    "US Congress (All)",
+    "US Congress (Rep)",
+    "US Congress (Dem)",
+    "UK Parliament (Lab)",
+    "UK Parliament (Con)",
+}
 
 # ── Data loaders ───────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=True, ttl="30m", max_entries=1)
@@ -138,6 +149,30 @@ def load_taxonomy(revision: int) -> dict[str, list[str]]:
         if isinstance(v, (list, tuple)):
             out[str(k)] = [str(x) for x in v if isinstance(x, str)]
     return out
+
+@st.cache_data(show_spinner=True, ttl="30m", max_entries=1)
+def build_taxonomy_numbering(taxonomy: dict[str, list[str]]) -> tuple[dict[str, int], dict[tuple[str, str], str]]:
+    """
+    Build stable numbering for taxonomy items.
+    Returns:
+        theme_numbers: {theme_name: theme_number}
+        meso_numbers: {(theme_name, meso_name): "T.M" format string}
+    
+    Themes are sorted alphabetically to ensure stable numbering regardless of filters.
+    """
+    theme_numbers = {}
+    meso_numbers = {}
+    
+    # Sort themes alphabetically for stable ordering
+    sorted_themes = sorted(taxonomy.keys())
+    
+    for theme_idx, theme in enumerate(sorted_themes, start=1):
+        theme_numbers[theme] = theme_idx
+        meso_list = taxonomy.get(theme, [])
+        for meso_idx, meso in enumerate(meso_list, start=1):
+            meso_numbers[(theme, meso)] = f"{theme_idx}.{meso_idx}"
+    
+    return theme_numbers, meso_numbers
 
 @st.cache_data(show_spinner=False, ttl="30m", max_entries=1)
 def fetch_user_annotations(user_id: str | None, revision: int) -> dict[tuple[str,str], tuple[str, str]]:
@@ -203,12 +238,24 @@ else:
 chosen_rev = st.sidebar.selectbox("Revision Version", revs, index=len(revs)-1)
 taxonomy = load_taxonomy(chosen_rev)
 
+# Build stable numbering based on taxonomy (not affected by filters)
+theme_numbers, meso_numbers = build_taxonomy_numbering(taxonomy)
+
 srcs = sorted(meso_df.source_domain.unique()) if "source_domain" in meso_df.columns else []
 models = sorted(meso_df.model.unique()) if "model" in meso_df.columns else []
-source_choice = st.sidebar.selectbox("Source Domain", ["(All sources)"] + srcs, index=0)
+
+# Calculate default sources (exclude US Congress and UK Parliament party breakdowns)
+default_sources = [s for s in srcs if s not in EXCLUDED_SOURCES_DEFAULT]
+
+source_choice = st.sidebar.multiselect(
+    "Source Domains",
+    options=srcs,
+    default=default_sources,
+    help="Select source domains to include. By default, US Congress and UK Parliament party breakdowns are excluded."
+)
+
 model_choice = st.sidebar.selectbox("Model", ["(All models)"] + models, 
                                     index=models.index("Ensemble") + 1 if "Ensemble" in models else 0)
-source_filter = None if source_choice == "(All sources)" else source_choice
 model_filter = None if model_choice == "(All models)" else model_choice
 
 st.sidebar.divider()
@@ -216,7 +263,7 @@ NEW_MIN_COUNT = st.sidebar.number_input(
     "Min count for new narratives",
     min_value=1,
     max_value=500,
-    value=20,  # Changed from 50 to 20
+    value=20,
     step=5,
     help="Minimum article count required to display new narratives not in the taxonomy"
 )
@@ -233,12 +280,15 @@ else:
     st.markdown("<div class='login-banner'>🔐 You are not signed in. <a href='/'>Sign in</a> to save your annotations.</div>", unsafe_allow_html=True)
 
 st.caption("Review narratives, annotate quality, and explore articles. Fill out the form below and click Save All Changes at the bottom.")
-st.info("📖 **New to annotation?** [Read the annotation guide](/Instructions#annotation-guide) to understand what each quality label means and how to use them effectively.")
+st.info("📖 **New to annotation?** [Read the Annotator Guide](/Annotator_Guide) to understand what each quality label means and how to use them effectively.")
 
 # ── Filter and aggregate ───────────────────────────────────────────────────────
 filtered = meso_df[meso_df.version == chosen_rev] if "version" in meso_df.columns else meso_df.copy()
-if source_filter and "source_domain" in filtered.columns:
-    filtered = filtered[filtered.source_domain == source_filter]
+
+# Apply source filter (multiselect)
+if source_choice and "source_domain" in filtered.columns:
+    filtered = filtered[filtered.source_domain.isin(source_choice)]
+
 if model_filter and "model" in filtered.columns:
     filtered = filtered[filtered.model == model_filter]
 
@@ -270,7 +320,12 @@ for th in visible_themes:
             extras.append(mn)
     theme_narr_map[th] = (base, sorted(extras))
 
+# order visible themes by total counts (descending), then by theme number
 visible_themes_sorted = sorted(visible_themes, key=lambda t: theme_totals.get(t, 0), reverse=True)
+
+# order visible themes by taxonomy numbering, then alphabetically
+visible_themes_sorted = sorted(visible_themes, key=lambda t: (theme_numbers.get(t, float('inf')), t))
+
 
 prefill_map = fetch_user_annotations(AUTH_UID if AUTH_UID else (USER.get("id") if USER else None), chosen_rev)
 
@@ -295,10 +350,15 @@ with st.form(key="annotation_form", clear_on_submit=False):
         color = "#e3f2fd" if in_tax else "#fff3e0"
         base_list, extras = theme_narr_map.get(theme, ([], []))
 
+        # Get theme number (only for taxonomy themes)
+        theme_num = theme_numbers.get(theme)
+        theme_num_display = f"<span class='theme-num'>T{theme_num}.</span>" if theme_num else ""
+        new_tag = " • NEW theme" if new_theme else ""
+
         st.markdown(
             f"<div class='theme-box' style='background:{color};'>"
-            f"<div class='theme-left'>Theme: {theme}</div>"
-            f"<div class='theme-right'>Total: {total}{' • NEW theme' if new_theme else ''}</div>"
+            f"<div class='theme-left'>{theme_num_display}Theme: {theme}</div>"
+            f"<div class='theme-right'>Total: {total}{new_tag}</div>"
             "</div>", unsafe_allow_html=True
         )
 
@@ -382,12 +442,16 @@ with st.form(key="annotation_form", clear_on_submit=False):
             key_sel = f"annot::{chosen_rev}::{theme}::{mn}"
             key_comment = f"comment::{chosen_rev}::{theme}::{mn}"
 
+            # Get meso number (only for taxonomy meso narratives)
+            meso_num = meso_numbers.get((theme, mn))
+            meso_num_display = f"<span class='meso-num'>{meso_num}</span>" if meso_num else ""
+            new_tag = " <em style='color:#c77;'>(NEW)</em>" if is_new else ""
+
             row = st.columns([0.18, 0.37, 0.15, 0.15, 0.15])
             with row[0]:
                 link_button(theme, mn, "View on Articles")
             with row[1]:
-                new_tag = " <em style='color:#c77;'>(NEW)</em>" if is_new else ""
-                st.markdown(f"<div class='narr-row' style='background:{row_bg};'><span class='narr-text'>{mn}{new_tag}</span></div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='narr-row' style='background:{row_bg};'><span class='narr-text'>{meso_num_display}{mn}{new_tag}</span></div>", unsafe_allow_html=True)
             with row[2]:
                 st.markdown(f"<div style='text-align:right; padding:8px 10px;'><span class='narr-count'>{cnt}</span></div>", unsafe_allow_html=True)
             with row[3]:
