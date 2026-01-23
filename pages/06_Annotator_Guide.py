@@ -123,23 +123,29 @@ Immediately underneath each blue-highlighted theme, you will see:
 
 st.markdown("**Use the dropdown to select one of the following:**")
 
+# Row 1: Good, Too Broad, Too Narrow
 col1, col2, col3 = st.columns(3)
 
 with col1:
     st.success("**✅ Good**")
-    st.markdown("The theme realistically describes the overall content of the meso narratives listed below.")
-    
-    st.warning("**🔄 Too Broad**")
-    st.markdown("The theme doesn't mean anything clear—it's too vague.")
+    st.markdown("The theme/narrative is well-formed, specific, distinct, and correctly placed.")
 
 with col2:
-    st.info("**🔬 Too Narrow**")
-    st.markdown("The theme is too specific and will limit the meso narratives to only one story or event.")
-    
-    st.error("**📋 Duplicate**")
-    st.markdown("The theme exists elsewhere (even if phrased slightly differently).")
+    st.warning("**🔄 Too Broad**")
+    st.markdown("Too vague or generic—doesn't mean anything clear.")
 
 with col3:
+    st.info("**🔬 Too Narrow**")
+    st.markdown("Too specific—will only apply to one particular story or event.")
+
+# Row 2: Duplicate, Wrong Theme, Poor Wording
+col4, col5, col6 = st.columns(3)
+
+with col4:
+    st.error("**📋 Duplicate**")
+    st.markdown("Same as another entry (even if phrased slightly differently).")
+
+with col5:
     st.markdown("""
     <div style="padding: 1rem; border-radius: 0.5rem; border: 1px solid #9e9e9e; background-color: #f5f5f5;">
     <strong>🔀 Wrong Theme</strong>
@@ -147,17 +153,38 @@ with col3:
     """, unsafe_allow_html=True)
     st.markdown("The meso narrative should be under a different theme.")
 
+with col6:
+    st.markdown("""
+    <div style="padding: 1rem; border-radius: 0.5rem; border: 1px solid #6c5ce7; background-color: #e8e4fc;">
+    <strong>✏️ Poor Wording</strong>
+    </div>
+    """, unsafe_allow_html=True)
+    st.markdown("The meaning is unclear or awkwardly phrased—suggest a reword in comments.")
+
+# Row 3: Other Issues
+col7, col8, col9 = st.columns(3)
+
+with col7:
+    st.markdown("""
+    <div style="padding: 1rem; border-radius: 0.5rem; border: 1px solid #636e72; background-color: #dfe6e9;">
+    <strong>⚠️ Other Issues</strong>
+    </div>
+    """, unsafe_allow_html=True)
+    st.markdown("Out of scope of migration, or problematic for any other reason—explain in comments.")
+
 st.markdown("""
 **Comments:**
 - If you think the theme could be reworded to better capture the meso narratives, note this in the comment box
 - If you marked something as **"Duplicate"**, leave a comment mentioning the exact narrative you believe it duplicates
 - If you chose **"Wrong Theme"**, suggest the theme it should be moved to, or propose a new theme
+- If you chose **"Poor Wording"**, suggest how you would reword it in the comments
+- If you chose **"Other Issues"**, explain the problem (e.g., out of scope, factually incorrect, etc.)
 """)
 
 st.subheader("Step 4: Assess Meso Narratives")
 st.markdown("""
 After assessing the theme, look at its **meso narratives** and undertake the same actions:
-- Use the dropdown to select: **Good**, **Too Broad**, **Too Narrow**, **Duplicate**, or **Wrong Theme**
+- Use the dropdown to select: **Good**, **Too Broad**, **Too Narrow**, **Duplicate**, **Wrong Theme**, **Poor Wording**, or **Other Issues**
 - Add any comments as needed
 """)
 
@@ -188,13 +215,15 @@ st.divider()
 st.header("📋 Quick Reference Card")
 
 st.markdown("""
-| Label | When to Use |
-|-------|-------------|
-| **Good** | Theme/narrative is well-formed, specific, distinct, and correctly placed |
-| **Too Broad** | Too vague or generic—doesn't mean anything clear |
-| **Too Narrow** | Too specific—only describes one particular story or event |
-| **Duplicate** | Same as another entry (even if worded differently)—leave comment specifying which |
-| **Wrong Theme** | Meso narrative belongs under a different theme—suggest where in comment |
+| Label | When to Use | Comment Required? |
+|-------|-------------|-------------------|
+| **Good** | Well-formed, specific, distinct, and correctly placed | No |
+| **Too Broad** | Too vague or generic—doesn't mean anything clear | Optional |
+| **Too Narrow** | Too specific—only describes one particular story or event | Optional |
+| **Duplicate** | Same as another entry (even if worded differently) | **Yes** — specify which |
+| **Wrong Theme** | Meso narrative belongs under a different theme | **Yes** — suggest where |
+| **Poor Wording** | Meaning is unclear or awkwardly phrased | **Yes** — suggest reword |
+| **Other Issues** | Out of scope of migration or problematic for other reasons | **Yes** — explain issue |
 """)
 
 st.divider()
