@@ -106,11 +106,8 @@ st.markdown("""
 
 st.subheader("Step 2: Initial Read-Through")
 st.markdown("""
-**Before making any changes or suggestions**, read through the **full list of themes** so you have a reasonable 
-sense of the whole.
-
-> 💡 For this initial read-through, you do **not** need to look at the meso narratives—just the theme headings.
-""")
+**Before making any changes or suggestions**, read through the **full list of themes** and ideally skim through the meso narratives so you have a reasonable 
+sense of the whole.""")
 
 st.subheader("Step 3: Assess Each Theme")
 st.markdown("""
@@ -223,7 +220,7 @@ st.markdown("""
 | **Duplicate** | Same as another entry (even if worded differently) | **Yes** — specify which |
 | **Wrong Theme** | Meso narrative belongs under a different theme | **Yes** — suggest where |
 | **Poor Wording** | Meaning is unclear or awkwardly phrased | **Yes** — suggest reword |
-| **Other Issues** | Out of scope of migration or problematic for other reasons | **Yes** — explain issue |
+| **Other Issues** | Out of scope of migration or problematic for other reasons | Optional |
 """)
 
 st.divider()
