@@ -7,6 +7,11 @@ from datetime import date
 st.set_page_config(page_title="Contrastive Dashboard",
                    layout="wide",
                    page_icon=".streamlit/static/MigNar_icon.png")
+
+from lib.sidebar_style import apply_sidebar_names
+apply_sidebar_names()
+
+
 st.title("Contrastive Dashboard")
 
 # ------------------------------------------------------------

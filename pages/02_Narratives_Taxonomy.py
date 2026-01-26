@@ -7,6 +7,9 @@ st.set_page_config(page_title="Meso Narratives Taxonomy",
                    layout="wide",
                    page_icon=".streamlit/static/MigNar_icon.png")
 
+from lib.sidebar_style import apply_sidebar_names
+apply_sidebar_names()
+
 # ── Supabase client ────────────────────────────────────────────────────────────
 SB_URL = st.secrets["supabase"]["url"]
 SB_KEY = st.secrets["supabase"]["anon_key"]

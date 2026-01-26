@@ -6,6 +6,10 @@ st.set_page_config(
     page_icon=".streamlit/static/MigNar_icon.png"
 )
 
+from lib.sidebar_style import apply_sidebar_names
+apply_sidebar_names()
+
+
 st.title("📝 Instructions for Annotators")
 
 st.info("These notes guide annotators assessing themes and meso narratives in the **[Seeing Migration Narratives (MigNar)](https://mignar.streamlit.app/)** app.")

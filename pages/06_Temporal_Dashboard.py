@@ -8,16 +8,8 @@ st.set_page_config(page_title="Temporal Dashboard",
                    layout="wide",
                    page_icon=".streamlit/static/MigNar_icon.png")
 
-# # Sidebar navigation
-# st.sidebar.subheader("Navigation")
-# try:
-#     st.sidebar.page_link("navigation_page.py", label="Navigation Page", icon="🧭")
-#     st.sidebar.page_link("pages/01_Narratives_on_Articles.py", label="Narratives on Articles", icon="📰")
-#     st.sidebar.page_link("pages/02_Aggregative_Dashboard.py", label="Aggregative Dashboard", icon="📊")
-#     st.sidebar.page_link("pages/03_Contrastive_Dashboard.py", label="Contrastive Dashboard", icon="⚖️")
-#     st.sidebar.page_link("pages/04_Temporal_Dashboard.py", label="Temporal Dashboard", icon="⏱")
-# except Exception:
-#     pass
+from lib.sidebar_style import apply_sidebar_names
+apply_sidebar_names()
 
 st.title("Temporal Dashboard")
 

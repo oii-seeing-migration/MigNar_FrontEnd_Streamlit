@@ -8,6 +8,10 @@ st.set_page_config(page_title="Narratives on Articles",
                    layout="wide",
                    page_icon=".streamlit/static/MigNar_icon.png")
 
+from lib.sidebar_style import apply_sidebar_names
+apply_sidebar_names()
+
+
 _qp = st.query_params
 def _get_param(k):
     v = _qp.get(k)
