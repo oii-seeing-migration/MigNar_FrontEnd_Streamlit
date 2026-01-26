@@ -1,0 +1,39 @@
+[[pages]]
+path = "navigation_page.py"
+name = "Sign In"
+icon = "🔐"
+
+[[pages]]
+path = "pages/00_Narratives_Taxonomy.py"
+name = "Narratives Taxonomy"
+icon = "📚"
+
+[[pages]]
+path = "pages/01_Narratives_on_Articles.py"
+name = "Narratives on Articles"
+icon = "📰"
+
+[[pages]]
+path = "pages/02_Aggregative_Dashboard.py"
+name = "Aggregative Dashboard"
+icon = "📊"
+
+[[pages]]
+path = "pages/03_Contrastive_Dashboard.py"
+name = "Contrastive Dashboard"
+icon = "⚖️"
+
+[[pages]]
+path = "pages/04_Temporal_Dashboard.py"
+name = "Temporal Dashboard"
+icon = "📈"
+
+[[pages]]
+path = "pages/05_App_Instructions.py"
+name = "Instructions"
+icon = "📖"
+
+[[pages]]
+path = "pages/06_Annotator_Guide.py"
+name = "Annotator Guide"
+icon = "📝"

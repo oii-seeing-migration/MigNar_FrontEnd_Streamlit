@@ -5,3 +5,6 @@ maxMessageSize = 200
 [runner]
 magicEnabled = false
 fastReruns = true
+
+[client]
+showSidebarNavigation = true
