@@ -66,6 +66,7 @@ st.markdown("""
 <style>
 .open-btn { display:inline-block; background:#1976d2; color:#fff !important; padding:4px 10px; border-radius:4px; text-decoration:none; font-size:0.75rem; margin:2px 0; }
 .open-btn:hover { background:#0d47a1; }
+.suggest-btn { display:inline-block; background:#43a047; color:#fff !important; padding:4px 10px; border-radius:4px; text-decoration:none; font-size:0.75rem; margin:2px 0; }
 .theme-box { padding:10px 12px; border-radius:10px; margin-top:14px; display:flex; align-items:center; justify-content:space-between; }
 .theme-left { font-weight:600; }
 .theme-right { font-size:0.9rem; opacity:0.8; }
@@ -77,6 +78,8 @@ st.markdown("""
 div[data-testid="column"] { padding-left: 0 !important; padding-right: 0 !important; }
 .theme-num { font-weight:700; color:#1565c0; margin-right:6px; }
 .meso-num { font-weight:600; color:#666; margin-right:6px; font-size:0.9rem; }
+.suggest-row { background: #e8f5e9; border: 1px dashed #81c784; border-radius: 8px; padding: 8px 10px; margin-top: 8px; }
+.suggest-label { color: #2e7d32; font-weight: 600; font-size: 0.9rem; }
 
 /* Sticky save button container */
 .sticky-save-container {
@@ -101,6 +104,9 @@ THEME_ANNOT_OPTIONS = ["", "good", "too broad", "too narrow", "duplicate", "wron
 REAL_OPTIONS = set(ANNOT_OPTIONS[1:])
 REAL_THEME_OPTIONS = set(THEME_ANNOT_OPTIONS[1:])
 ANNOT_TABLE = "taxonomy_annotations"
+
+# Special meso name for human-suggested narratives
+HUMAN_SUGGESTED_MESO = "human suggested narratives"
 
 # Sources to exclude by default (US Congress and UK Parliament party breakdowns)
 EXCLUDED_SOURCES_DEFAULT = {
@@ -188,49 +194,51 @@ def build_taxonomy_numbering(taxonomy: dict[str, list[str]]) -> tuple[dict[str, 
     
     return theme_numbers, meso_numbers
 
-@st.cache_data(show_spinner=False, ttl="30m", max_entries=1)
 def fetch_user_annotations(user_id: str | None, revision: int) -> dict[tuple[str,str], tuple[str, str]]:
-    """Fetch annotations with labels AND comments"""
+    """Fetch annotations with labels AND comments - NOT cached to ensure fresh data"""
     if not user_id:
         return {}
     try:
         res = supabase.table(ANNOT_TABLE).select("theme,meso,label,comment").eq("user_id", user_id).eq("revision", revision).execute()
         items = res.data or []
         return {
-            (i["theme"], i["meso"]): (i.get("label", ""), i.get("comment", ""))
+            (i["theme"], i["meso"]): (i.get("label") or "", i.get("comment") or "")
             for i in items if isinstance(i, dict)
         }
-    except Exception:
+    except Exception as e:
+        st.error(f"Error fetching annotations: {e}")
         return {}
 
 # ── DB write ───────────────────────────────────────────────────────────────────
-def batch_upsert_annotations(user: dict, revision: int, annotations: dict) -> tuple[int, int]:
-    """Batch upsert all annotations. Returns (success_count, fail_count)"""
+def batch_upsert_annotations(user: dict, revision: int, annotations: dict) -> tuple[int, int, list[str]]:
+    """Batch upsert all annotations. Returns (success_count, fail_count, error_messages)"""
     uid = AUTH_UID or user.get("id")
     if not uid:
-        return (0, len(annotations))
+        return (0, len(annotations), ["No user ID available"])
     
     success_count = 0
     fail_count = 0
+    errors = []
     
     for key, (label, comment) in annotations.items():
         theme, meso = key
         try:
             payload = {
                 "user_id": str(uid),
-                "user_name": user.get("name"),
+                "user_name": user.get("name") or user.get("email") or "Unknown",
                 "theme": theme,
                 "meso": meso,
                 "revision": revision,
-                "label": label,
-                "comment": comment,
+                "label": label or "",
+                "comment": comment or "",
             }
-            supabase.table(ANNOT_TABLE).upsert(payload, on_conflict="user_id,revision,theme,meso").execute()
+            result = supabase.table(ANNOT_TABLE).upsert(payload, on_conflict="user_id,revision,theme,meso").execute()
             success_count += 1
-        except Exception:
+        except Exception as e:
             fail_count += 1
+            errors.append(f"{theme[:20]}...: {str(e)[:50]}")
     
-    return (success_count, fail_count)
+    return (success_count, fail_count, errors)
 
 # ── Load data ──────────────────────────────────────────────────────────────────
 meso_df = load_meso_df(MESO_PATH)
@@ -282,6 +290,9 @@ NEW_MIN_COUNT = st.sidebar.number_input(
     help="Minimum article count required to display new narratives not in the taxonomy"
 )
 
+# Debug toggle in sidebar
+# show_debug = st.sidebar.checkbox("Show debug info", value=False)
+
 # ── Main content ───────────────────────────────────────────────────────────────
 st.title(f"Narratives Taxonomy (Revision {chosen_rev})")
 
@@ -295,6 +306,19 @@ else:
 
 st.caption("Review narratives, annotate quality, and explore articles. Fill out the form below and click Save All Changes.")
 st.info("📖 **New to annotation?** [Read the Annotator Guide](/Annotator_Guide) to understand what each quality label means and how to use them effectively.")
+
+# ── Debug info ─────────────────────────────────────────────────────────────────
+if show_debug:
+    with st.expander("🔧 Debug Info", expanded=True):
+        st.write("**Auth State:**")
+        st.json({
+            "BIND_OK": BIND_OK,
+            "AUTH_UID": str(AUTH_UID)[-10:] if AUTH_UID else None,
+            "USER": {"name": USER.get("name"), "id": str(USER.get("id"))[-10:]} if USER else None,
+        })
+        st.write("**Supabase Config:**")
+        st.write(f"URL: {SB_URL[:30]}...")
+        st.write(f"Table: {ANNOT_TABLE}")
 
 # ── Filter and aggregate ───────────────────────────────────────────────────────
 filtered = meso_df[meso_df.version == chosen_rev] if "version" in meso_df.columns else meso_df.copy()
@@ -337,7 +361,14 @@ for th in visible_themes:
 # order visible themes by taxonomy numbering, then alphabetically
 visible_themes_sorted = sorted(visible_themes, key=lambda t: (theme_numbers.get(t, float('inf')), t))
 
+# Fetch existing annotations (not cached)
 prefill_map = fetch_user_annotations(AUTH_UID if AUTH_UID else (USER.get("id") if USER else None), chosen_rev)
+
+if show_debug:
+    with st.expander("🔧 Prefill Data", expanded=False):
+        st.write(f"Loaded {len(prefill_map)} existing annotations")
+        if prefill_map:
+            st.write("Sample:", dict(list(prefill_map.items())[:3]))
 
 def articles_link(theme: str | None = None, meso: str | None = None) -> str:
     params = []
@@ -528,40 +559,87 @@ with st.form(key="annotation_form", clear_on_submit=False):
                         disabled=True,
                         label_visibility="collapsed"
                     )
+        
+        # ── Suggest New Narratives Row ─────────────────────────────────────────
+        suggest_key = (theme, HUMAN_SUGGESTED_MESO)
+        _, suggest_prev_comment = prefill_map.get(suggest_key, ("", ""))
+        
+        suggest_row = st.columns([0.15, 0.35, 0.50])
+        with suggest_row[0]:
+            st.markdown("<span class='suggest-btn'>➕ Suggest New</span>", unsafe_allow_html=True)
+        with suggest_row[1]:
+            st.markdown("<div class='suggest-row'><span class='suggest-label'>Suggest new meso narratives in comment box, separated by <code>;</code></span></div>", unsafe_allow_html=True)
+        with suggest_row[2]:
+            if USER and AUTH_UID and BIND_OK:
+                suggest_comment = st.text_input(
+                    "Suggest new narratives",
+                    value=suggest_prev_comment,
+                    key=f"suggest::{chosen_rev}::{theme}",
+                    placeholder="e.g., Migrants enrich local cuisine; Migrants revive dying industries",
+                    label_visibility="collapsed"
+                )
+                form_data[f"suggest::{theme}"] = suggest_comment
+            else:
+                st.text_input(
+                    "Suggest new narratives",
+                    value="",
+                    key=f"suggest::{chosen_rev}::{theme}",
+                    placeholder="Sign in to suggest new narratives",
+                    disabled=True,
+                    label_visibility="collapsed"
+                )
     
     # Process form submission (after all fields are rendered)
     if submitted and USER and AUTH_UID and BIND_OK:
-
-        # Collect all changed annotations
+        # Collect ALL annotations (not just changed ones, to ensure saving works)
         annotations_to_save = {}
         
         for theme in visible_themes_sorted:
-            # Theme annotations
+            # Theme annotations - always save if there's a value
             theme_key = (theme, "")
-            saved_label, saved_comment = prefill_map.get(theme_key, ("", ""))
             new_label = form_data.get(f"theme_annot::{theme}", "")
             new_comment = form_data.get(f"theme_comment::{theme}", "")
-            if (new_label != saved_label) or (new_comment != saved_comment):
+            saved_label, saved_comment = prefill_map.get(theme_key, ("", ""))
+            
+            # Save if there's any value OR if it changed
+            if new_label or new_comment or (new_label != saved_label) or (new_comment != saved_comment):
                 annotations_to_save[theme_key] = (new_label, new_comment)
             
             # Meso annotations
             base_list, extras = theme_narr_map.get(theme, ([], []))
             for mn in base_list + extras:
                 narr_key = (theme, mn)
-                saved_label, saved_comment = prefill_map.get(narr_key, ("", ""))
                 new_label = form_data.get(f"meso_annot::{theme}::{mn}", "")
                 new_comment = form_data.get(f"meso_comment::{theme}::{mn}", "")
-                if (new_label != saved_label) or (new_comment != saved_comment):
+                saved_label, saved_comment = prefill_map.get(narr_key, ("", ""))
+                
+                if new_label or new_comment or (new_label != saved_label) or (new_comment != saved_comment):
                     annotations_to_save[narr_key] = (new_label, new_comment)
+            
+            # Human suggested narratives
+            suggest_key = (theme, HUMAN_SUGGESTED_MESO)
+            new_suggest_comment = form_data.get(f"suggest::{theme}", "")
+            _, saved_suggest_comment = prefill_map.get(suggest_key, ("", ""))
+            
+            if new_suggest_comment or new_suggest_comment != saved_suggest_comment:
+                annotations_to_save[suggest_key] = ("", new_suggest_comment)
+        
+        if show_debug:
+            st.write(f"**Attempting to save {len(annotations_to_save)} annotations**")
+            if annotations_to_save:
+                st.write("Sample:", dict(list(annotations_to_save.items())[:3]))
         
         if annotations_to_save:
-            success, fail = batch_upsert_annotations(USER, chosen_rev, annotations_to_save)
-            st.cache_data.clear()
+            success, fail, errors = batch_upsert_annotations(USER, chosen_rev, annotations_to_save)
             if fail == 0:
                 st.success(f"✅ Saved {success} annotation(s)")
+                st.rerun()
             else:
                 st.warning(f"⚠️ Saved {success}, failed {fail}")
-            st.rerun()
+                if errors:
+                    with st.expander("Show errors"):
+                        for err in errors[:10]:
+                            st.error(err)
         else:
             st.info("No changes to save")
 
@@ -574,9 +652,10 @@ n_new_narr_kept = sum(len(extras) for _, (base, extras) in theme_narr_map.items(
 if USER and AUTH_UID:
     n_annotated = len([v for v in prefill_map.values() if v[0] in (REAL_OPTIONS | REAL_THEME_OPTIONS)])
     n_commented = len([v for v in prefill_map.values() if v[1].strip()])
+    n_suggested = len([k for k, v in prefill_map.items() if k[1] == HUMAN_SUGGESTED_MESO and v[1].strip()])
     total_items = len(visible_themes_sorted) + sum(len(base) + len(extras) for base, extras in theme_narr_map.values())
     st.caption(
-        f"**Your Progress:** {n_annotated} annotated, {n_commented} commented (out of {total_items} total items) • "
+        f"**Your Progress:** {n_annotated} annotated, {n_commented} commented, {n_suggested} themes with suggestions (out of {total_items} total items) • "
         f"Revision {chosen_rev}: {n_tax_themes} themes, {n_tax_narr} base narratives, {n_new_narr_kept} new narratives (count≥{NEW_MIN_COUNT})"
     )
 else:
