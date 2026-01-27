@@ -283,7 +283,7 @@ NEW_MIN_COUNT = st.sidebar.number_input(
 )
 
 # ── Main content ───────────────────────────────────────────────────────────────
-st.title(f"Meso Narratives Taxonomy (Revision {chosen_rev})")
+st.title(f"Narratives Taxonomy (Revision {chosen_rev})")
 
 # ── Login banner ───────────────────────────────────────────────────────────────
 if USER and AUTH_UID and BIND_OK:
