@@ -77,6 +77,16 @@ st.markdown("""
 div[data-testid="column"] { padding-left: 0 !important; padding-right: 0 !important; }
 .theme-num { font-weight:700; color:#1565c0; margin-right:6px; }
 .meso-num { font-weight:600; color:#666; margin-right:6px; font-size:0.9rem; }
+
+/* Sticky save button container */
+.sticky-save-container {
+    position: sticky;
+    top: 0;
+    z-index: 999;
+    background: linear-gradient(to bottom, rgba(255,255,255,1) 0%, rgba(255,255,255,1) 85%, rgba(255,255,255,0) 100%);
+    padding: 10px 0 20px 0;
+    margin-bottom: 10px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -85,8 +95,9 @@ MESO_PATH  = os.path.join(DATA_DIR, "meso_monthly.parquet")
 TAXON_DIR  = os.path.join(os.path.dirname(__file__), "../taxonomy")
 ARTICLES_SLUG = "Narratives_on_Articles"
 
-ANNOT_OPTIONS = ["", "duplicate narrative", "too specific", "too generic", "good", "poor wording", "other issues"]
-THEME_ANNOT_OPTIONS = ["", "duplicate theme", "too broad", "too narrow", "good", "wrong theme", "poor wording", "other issues"]
+# Updated label options to match Annotator Guide
+ANNOT_OPTIONS = ["", "good", "too broad", "too narrow", "duplicate", "wrong theme", "poor wording", "other issues"]
+THEME_ANNOT_OPTIONS = ["", "good", "too broad", "too narrow", "duplicate", "wrong theme", "poor wording", "other issues"]
 REAL_OPTIONS = set(ANNOT_OPTIONS[1:])
 REAL_THEME_OPTIONS = set(THEME_ANNOT_OPTIONS[1:])
 ANNOT_TABLE = "taxonomy_annotations"
@@ -266,7 +277,7 @@ NEW_MIN_COUNT = st.sidebar.number_input(
     "Min count for new narratives",
     min_value=1,
     max_value=500,
-    value=20,
+    value=2,
     step=5,
     help="Minimum article count required to display new narratives not in the taxonomy"
 )
@@ -276,13 +287,13 @@ st.title(f"Meso Narratives Taxonomy (Revision {chosen_rev})")
 
 # ── Login banner ───────────────────────────────────────────────────────────────
 if USER and AUTH_UID and BIND_OK:
-    st.markdown(f"<div class='login-banner logged'>✅ Signed in as <strong>{USER.get('name') or USER.get('email')}</strong> — Make changes and click Save at the bottom</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='login-banner logged'>✅ Signed in as <strong>{USER.get('name') or USER.get('email')}</strong> — Make changes and click Save at the top</div>", unsafe_allow_html=True)
 elif USER:
     st.markdown("<div class='login-banner'>⚠️ Signed in, but database session not fully bound. Try refreshing the page.</div>", unsafe_allow_html=True)
 else:
     st.markdown("<div class='login-banner'>🔐 You are not signed in. <a href='/'>Sign in</a> to save your annotations.</div>", unsafe_allow_html=True)
 
-st.caption("Review narratives, annotate quality, and explore articles. Fill out the form below and click Save All Changes at the bottom.")
+st.caption("Review narratives, annotate quality, and explore articles. Fill out the form below and click Save All Changes.")
 st.info("📖 **New to annotation?** [Read the Annotator Guide](/Annotator_Guide) to understand what each quality label means and how to use them effectively.")
 
 # ── Filter and aggregate ───────────────────────────────────────────────────────
@@ -323,12 +334,8 @@ for th in visible_themes:
             extras.append(mn)
     theme_narr_map[th] = (base, sorted(extras))
 
-# order visible themes by total counts (descending), then by theme number
-visible_themes_sorted = sorted(visible_themes, key=lambda t: theme_totals.get(t, 0), reverse=True)
-
 # order visible themes by taxonomy numbering, then alphabetically
 visible_themes_sorted = sorted(visible_themes, key=lambda t: (theme_numbers.get(t, float('inf')), t))
-
 
 prefill_map = fetch_user_annotations(AUTH_UID if AUTH_UID else (USER.get("id") if USER else None), chosen_rev)
 
@@ -344,6 +351,14 @@ def link_button(theme: str, meso: str | None = None, label: str = "View on Artic
 # ── FORM: Wrap all annotations in a form to prevent reloads ────────────────────
 with st.form(key="annotation_form", clear_on_submit=False):
     form_data = {}
+    
+    # ── Save Button (will be positioned fixed via CSS) ─────────────────────────
+    save_col1, save_col2 = st.columns([1, 1])
+    with save_col1:
+        submitted = st.form_submit_button("💾 Save All Changes", type="primary", use_container_width=True, disabled=not (USER and AUTH_UID and BIND_OK))
+    with save_col2:
+        if not (USER and AUTH_UID and BIND_OK):
+            st.caption("🔐 Sign in to save")
     
     # ── Render themes and narratives ───────────────────────────────────────────
     for theme in visible_themes_sorted:
@@ -365,34 +380,30 @@ with st.form(key="annotation_form", clear_on_submit=False):
             "</div>", unsafe_allow_html=True
         )
 
+        # Header row for columns (appears once per theme, right after theme box)
+        header = st.columns([0.15, 0.35, 0.08, 0.20, 0.22])
+        with header[0]: 
+            st.markdown("<small>&nbsp;</small>", unsafe_allow_html=True)
+        with header[1]: 
+            st.markdown("<small>&nbsp;</small>", unsafe_allow_html=True)
+        with header[2]: 
+            st.markdown("<small style='text-align:center; display:block;'><strong>Count</strong></small>", unsafe_allow_html=True)
+        with header[3]: 
+            st.markdown("<small style='text-align:center; display:block;'><strong>Label</strong></small>", unsafe_allow_html=True)
+        with header[4]: 
+            st.markdown("<small style='text-align:center; display:block;'><strong>Comment</strong></small>", unsafe_allow_html=True)
+
         # Theme-level annotation row
         theme_key = (theme, "")
         theme_label_prev, theme_comment_prev = prefill_map.get(theme_key, ("", ""))
         
-        theme_annot_row = st.columns([0.18, 0.37, 0.15, 0.15, 0.15])
+        theme_annot_row = st.columns([0.15, 0.35, 0.08, 0.20, 0.22])
         with theme_annot_row[0]:
             link_button(theme, None, "View on Articles")
         with theme_annot_row[1]:
-            if USER and AUTH_UID and BIND_OK:
-                theme_comment = st.text_input(
-                    "Theme comment",
-                    value=theme_comment_prev,
-                    key=f"theme_comment::{chosen_rev}::{theme}",
-                    placeholder="Add comment about this theme...",
-                    label_visibility="collapsed"
-                )
-                form_data[f"theme_comment::{theme}"] = theme_comment
-            else:
-                st.text_input(
-                    "Theme comment",
-                    value="",
-                    key=f"theme_comment::{chosen_rev}::{theme}",
-                    placeholder="Sign in to comment",
-                    disabled=True,
-                    label_visibility="collapsed"
-                )
+            st.markdown(f"<div style='padding:8px 0; font-weight:600; color:#1565c0;'>Theme level</div>", unsafe_allow_html=True)
         with theme_annot_row[2]:
-            st.markdown(f"<div style='text-align:right; padding:8px 10px; color:#666;'><em>Theme level</em></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align:center; padding:8px 10px;'><span class='narr-count'>{total}</span></div>", unsafe_allow_html=True)
         with theme_annot_row[3]:
             if USER and AUTH_UID and BIND_OK:
                 theme_idx = (THEME_ANNOT_OPTIONS.index(theme_label_prev) if theme_label_prev in THEME_ANNOT_OPTIONS else 0)
@@ -418,20 +429,37 @@ with st.form(key="annotation_form", clear_on_submit=False):
                     help="Sign in to annotate"
                 )
         with theme_annot_row[4]:
-            st.empty()
+            if USER and AUTH_UID and BIND_OK:
+                theme_comment = st.text_input(
+                    "Theme comment",
+                    value=theme_comment_prev,
+                    key=f"theme_comment::{chosen_rev}::{theme}",
+                    placeholder="Add comment about this theme...",
+                    label_visibility="collapsed"
+                )
+                form_data[f"theme_comment::{theme}"] = theme_comment
+            else:
+                st.text_input(
+                    "Theme comment",
+                    value="",
+                    key=f"theme_comment::{chosen_rev}::{theme}",
+                    placeholder="Sign in to comment",
+                    disabled=True,
+                    label_visibility="collapsed"
+                )
 
-        # Header for meso narratives
-        header = st.columns([0.18, 0.37, 0.15, 0.15, 0.15])
-        with header[0]: 
+        # Meso narratives header row (just shows "Meso Narratives" label, no column headers)
+        meso_header = st.columns([0.15, 0.35, 0.08, 0.20, 0.22])
+        with meso_header[0]: 
             st.markdown("<small>&nbsp;</small>", unsafe_allow_html=True)
-        with header[1]: 
-            st.markdown("<small style='padding-left:10px;'><strong>Meso Narratives</strong></small>", unsafe_allow_html=True)
-        with header[2]: 
-            st.markdown("<small style='text-align:right; display:block;'><strong>Count</strong></small>", unsafe_allow_html=True)
-        with header[3]: 
-            st.markdown("<small style='text-align:center; display:block;'><strong>Quality</strong></small>", unsafe_allow_html=True)
-        with header[4]: 
-            st.markdown("<small style='text-align:center; display:block;'><strong>Comment</strong></small>", unsafe_allow_html=True)
+        with meso_header[1]: 
+            st.markdown("<small style='padding-left:1px; margin-top:10px; display:block;'><strong>Meso Narratives</strong></small>", unsafe_allow_html=True)
+        with meso_header[2]: 
+            st.markdown("<small>&nbsp;</small>", unsafe_allow_html=True)
+        with meso_header[3]: 
+            st.markdown("<small>&nbsp;</small>", unsafe_allow_html=True)
+        with meso_header[4]: 
+            st.markdown("<small>&nbsp;</small>", unsafe_allow_html=True)
 
         # Meso narratives
         for mn in base_list + extras:
@@ -450,18 +478,18 @@ with st.form(key="annotation_form", clear_on_submit=False):
             meso_num_display = f"<span class='meso-num'>{meso_num}</span>" if meso_num else ""
             new_tag = " <em style='color:#c77;'>(NEW)</em>" if is_new else ""
 
-            row = st.columns([0.18, 0.37, 0.15, 0.15, 0.15])
+            row = st.columns([0.15, 0.35, 0.08, 0.20, 0.22])
             with row[0]:
                 link_button(theme, mn, "View on Articles")
             with row[1]:
                 st.markdown(f"<div class='narr-row' style='background:{row_bg};'><span class='narr-text'>{meso_num_display}{mn}{new_tag}</span></div>", unsafe_allow_html=True)
             with row[2]:
-                st.markdown(f"<div style='text-align:right; padding:8px 10px;'><span class='narr-count'>{cnt}</span></div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='text-align:center; padding:8px 10px;'><span class='narr-count'>{cnt}</span></div>", unsafe_allow_html=True)
             with row[3]:
                 if USER and AUTH_UID and BIND_OK:
                     idx = (ANNOT_OPTIONS.index(prev_label) if prev_label in ANNOT_OPTIONS else 0)
                     choice = st.selectbox(
-                        "quality",
+                        "label",
                         ANNOT_OPTIONS,
                         index=idx,
                         key=key_sel,
@@ -472,7 +500,7 @@ with st.form(key="annotation_form", clear_on_submit=False):
                     form_data[f"meso_annot::{theme}::{mn}"] = choice
                 else:
                     st.selectbox(
-                        "quality",
+                        "label",
                         ANNOT_OPTIONS,
                         index=0,
                         key=key_sel,
@@ -501,17 +529,9 @@ with st.form(key="annotation_form", clear_on_submit=False):
                         label_visibility="collapsed"
                     )
     
-    # Submit button at the bottom of form
-    st.markdown("---")
-    col1, col2, col3 = st.columns([1, 1, 4])
-    with col1:
-        submitted = st.form_submit_button("💾 Save All Changes", type="primary", use_container_width=True, disabled=not (USER and AUTH_UID and BIND_OK))
-    with col2:
-        if submitted:
-            st.info("Saving...")
-    
-    # Process form submission
+    # Process form submission (after all fields are rendered)
     if submitted and USER and AUTH_UID and BIND_OK:
+
         # Collect all changed annotations
         annotations_to_save = {}
         

@@ -71,7 +71,7 @@ def apply_sidebar_names():
             visibility: hidden;
         }
         [data-testid="stSidebarNav"] li:nth-child(3) span::before {
-            content: "📝 Annotator Guide";
+            content: "📝 Annotators' Guide";
             visibility: visible;
         }
     </style>

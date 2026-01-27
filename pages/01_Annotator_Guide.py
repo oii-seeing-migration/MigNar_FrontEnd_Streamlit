@@ -12,7 +12,7 @@ apply_sidebar_names()
 
 st.title("📝 Instructions for Annotators")
 
-st.info("These notes guide annotators assessing themes and meso narratives in the **[Seeing Migration Narratives (MigNar)](https://mignar.streamlit.app/)** app.")
+st.info("These notes guide annotators working on the **[Seeing Migration Narratives (MigNar)](https://mignar.streamlit.app/)** project.")
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Introduction
@@ -28,12 +28,48 @@ migration and extracted narratives from them in a hierarchical form:
 
 - **Narrative Themes**: General discussions about fairly broad topics
 - **Meso Narratives**: Commonly occurring ideas or stories within those themes
+
+There are **two distinct annotation tasks** in this project:
 """)
 
+col1, col2 = st.columns(2)
+with col1:
+    st.info("""
+    **Task 1: Annotating the Taxonomy**
+    
+    Review and refine the *list* of themes and meso narratives itself—ensuring the taxonomy is comprehensive, well-organised, and free of duplicates.
+    """)
+
+with col2:
+    st.warning("""
+    **Task 2: Validating LLM Labels**
+    
+    Check whether the LLMs have *correctly applied* taxonomy labels to specific articles and text fragments.
+    """)
+
+st.markdown("---")
+
 # ═══════════════════════════════════════════════════════════════════════════
-# What is the Narrative Taxonomy?
+# TASK 1: ANNOTATING THE TAXONOMY
 # ═══════════════════════════════════════════════════════════════════════════
-st.header("What is the Narrative Taxonomy?")
+st.header("Task 1: Annotating the Taxonomy")
+
+st.success("""
+**What this task is about:**
+
+You are evaluating the *taxonomy itself*—the structured list of themes and meso narratives. Your job is to assess whether each narrative entry is:
+- Well-worded and clear
+- Neither too broad nor too narrow
+- Not a duplicate of another entry
+- Correctly placed under its theme
+
+**What this task is NOT about:**
+
+You are **not** judging whether the LLM correctly labelled a specific article with a narrative. That is a separate task (Task 2). Here, you're only assessing whether the narrative *as a concept* belongs in the taxonomy.
+""")
+
+# ── What is the Narrative Taxonomy? ────────────────────────────────────────────
+st.subheader("What is the Narrative Taxonomy?")
 
 st.markdown("""
 The **taxonomy** is the structured list of themes and meso narratives that the LLMs use when annotating texts.
@@ -52,10 +88,8 @@ Once finalised, the taxonomy becomes **fixed**—the LLMs will only select from 
 consistent annotation across all documents.
 """)
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Broad Objectives
-# ═══════════════════════════════════════════════════════════════════════════
-st.header("Broad Objectives for Annotators")
+# ── Broad Objectives ───────────────────────────────────────────────────────────
+st.subheader("Broad Objectives")
 
 st.markdown("""
 Your role at this stage of the project is to:
@@ -64,7 +98,7 @@ Your role at this stage of the project is to:
 objectives = [
     "**Review narrative themes and meso narratives** to ensure that themes correctly describe the set of meso narratives beneath them and are not duplicates of other (perhaps slightly differently worded) themes.",
     "**Clarify that meso narratives are specific and relevant** to the themes under which they sit.",
-    "**Ensure meso narratives are broad enough** to cover various situations/stories—and not so specific that they only describe one particular story.",
+    "**Ensure meso narratives are MESO (not macro or micro)**, meaning that they are broad enough to cover various situations/stories—and not so specific that they only describe one particular story.",
     "**Validate that the LLMs are correctly tagging** narrative elements (i.e., ideas/stories) to specific meso narratives.",
 ]
 
@@ -82,10 +116,8 @@ This means **theme wording must hint sufficiently to the meso narratives**. If a
 clearly associate with its theme in the first round, it may never get the chance to be selected later.
 """)
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Avoiding Normative Judgements
-# ═══════════════════════════════════════════════════════════════════════════
-st.header("Avoiding Normative Judgements")
+# ── Avoiding Normative Judgements ──────────────────────────────────────────────
+st.subheader("Avoiding Normative Judgements")
 
 st.error("""
 **We are NOT trying to:**
@@ -96,24 +128,22 @@ st.error("""
 Your role is to assess the taxonomy structure and quality—not to evaluate the content of the narratives themselves.
 """)
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Process
-# ═══════════════════════════════════════════════════════════════════════════
-st.header("Annotation Process")
+# ── Annotation Process ─────────────────────────────────────────────────────────
+st.subheader("Annotation Process")
 
-st.subheader("Step 1: Sign In and Navigate")
+st.markdown("#### Step 1: Sign In and Navigate")
 st.markdown("""
 1. Sign in to the [MigNar app](https://mignar.streamlit.app/)
 2. Navigate to the **[Narratives Taxonomy](https://mignar.streamlit.app/Narratives_Taxonomy)** page
 3. You will see **themes highlighted in blue**, with a list of meso narratives underneath each one
 """)
 
-st.subheader("Step 2: Initial Read-Through")
+st.markdown("#### Step 2: Initial Read-Through")
 st.markdown("""
 **Before making any changes or suggestions**, read through the **full list of themes** and ideally skim through the meso narratives so you have a reasonable 
 sense of the whole.""")
 
-st.subheader("Step 3: Annotate Each Theme and Its Meso Narratives")
+st.markdown("#### Step 3: Annotate Each Theme and Its Meso Narratives")
 st.markdown("""
 Once you've completed the initial read-through, look at the **first theme** and the meso narratives below it.
 
@@ -182,7 +212,7 @@ st.markdown("""
 - If you chose **"Other Issues"**, explain the problem (e.g., out of scope, factually incorrect, etc.)
 """)
 
-st.subheader("Step 4: Assess Meso Narratives")
+st.markdown("#### Step 4: Assess Meso Narratives")
 st.markdown("""
 After assessing the theme, look at its **meso narratives** and undertake the same actions:
 - Use the dropdown to select: **Good**, **Too Broad**, **Too Narrow**, **Duplicate**, **Wrong Theme**, **Poor Wording**, or **Other Issues**
@@ -199,21 +229,20 @@ If you wish to see a random selection of the content used to generate these meso
 
 You do **not** need to look at every article, but they may help you orient yourself or understand confusing meso narratives.
 
+**Remember:** When viewing articles, you're checking whether the *narrative concept* makes sense—not whether the LLM correctly applied it to that specific article.
+
 If the content is confusing or obviously wrong—even after reviewing articles—please note this in the comment.
 """)
 
-st.subheader("Step 5: Save Your Work")
+st.markdown("#### Step 5: Save Your Work")
 st.success("""
 **💾 After completing a batch of annotations, click the Save button to save your work.**
 
 Your annotations are valuable—don't forget to save regularly!
 """)
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Quick Reference Card
-# ═══════════════════════════════════════════════════════════════════════════
-st.divider()
-st.header("📋 Quick Reference Card")
+# ── Quick Reference Card ───────────────────────────────────────────────────────
+st.subheader("📋 Quick Reference Card")
 
 st.markdown("""
 | Label | When to Use | Comment Required? |
@@ -225,6 +254,39 @@ st.markdown("""
 | **Wrong Theme** | Meso narrative belongs under a different theme | **Yes** — suggest where |
 | **Poor Wording** | Meaning is unclear or awkwardly phrased | **Yes** — suggest reword |
 | **Other Issues** | Out of scope of migration or problematic for other reasons | Optional |
+""")
+
+st.markdown("---")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TASK 2: VALIDATING LLM LABELS
+# ═══════════════════════════════════════════════════════════════════════════
+st.header("Task 2: Validating LLM Labels")
+
+st.warning("🚧 **This section is under construction** — Instructions to be completed.")
+
+st.markdown("""
+**What this task is about:**
+
+Once the taxonomy is finalised, we need to verify that the LLMs are *correctly applying* the taxonomy labels to articles. In this task, you will:
+
+- Review articles that have been labelled with specific **stances** (pro-migration, anti-migration, neutral)
+- Review articles that have been labelled with specific **themes** and **meso narratives**
+- Judge whether the LLM's labels are **correct**, **incorrect**, or **partially correct**
+- Identify cases where the LLM missed a label or applied an irrelevant one
+
+**Key difference from Task 1:**
+
+| Task 1: Taxonomy Annotation | Task 2: Label Validation |
+|-----------------------------|--------------------------|
+| Is this narrative *well-defined*? | Is this narrative *correctly applied* to this article? |
+| Does it belong in the taxonomy? | Does the article actually express this narrative? |
+| Is the wording clear? | Did the LLM identify the right text fragment? |
+
+**Coming soon:**
+- Detailed instructions for the validation interface
+- Guidelines for edge cases
+- Examples of correct vs. incorrect labels
 """)
 
 st.divider()
