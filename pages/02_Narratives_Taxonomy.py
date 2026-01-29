@@ -29,11 +29,39 @@ def jwt_payload(token: str) -> dict | None:
         return None
 
 def bind_auth_from_session() -> tuple[bool, str | None]:
+    """Bind Supabase auth from session, refreshing token if expired."""
     sess = st.session_state.get("session") or {}
     at = sess.get("access_token")
     rt = sess.get("refresh_token")
     if not at:
         return (False, None)
+    
+    # Check if token is expired
+    payload = jwt_payload(at) or {}
+    exp = payload.get("exp", 0)
+    import time
+    is_expired = exp < time.time()
+    
+    # If expired and we have a refresh token, try to refresh
+    if is_expired and rt:
+        try:
+            response = supabase.auth.refresh_session(rt)
+            if response and response.session:
+                # Update session state with new tokens
+                new_at = response.session.access_token
+                new_rt = response.session.refresh_token
+                st.session_state.session = {
+                    "access_token": new_at,
+                    "refresh_token": new_rt,
+                }
+                at = new_at
+                rt = new_rt
+        except Exception as e:
+            # Refresh failed - user needs to re-login
+            st.warning("⚠️ Session expired. Please sign in again.")
+            return (False, None)
+    
+    # Set the session
     try:
         try:
             supabase.auth.set_session(at, rt)
@@ -41,10 +69,14 @@ def bind_auth_from_session() -> tuple[bool, str | None]:
             supabase.auth.set_session(access_token=at, refresh_token=rt)
     except Exception:
         pass
+    
+    # Auth the postgrest client
     try:
         supabase.postgrest.auth(at)
     except Exception:
         pass
+    
+    # Get user ID
     uid = None
     try:
         me = supabase.auth.get_user()
@@ -52,9 +84,11 @@ def bind_auth_from_session() -> tuple[bool, str | None]:
         uid = getattr(au, "id", None)
     except Exception:
         pass
+    
     if not uid:
         payload = jwt_payload(at) or {}
         uid = payload.get("sub")
+    
     ok = bool(uid)
     return (ok, uid)
 
