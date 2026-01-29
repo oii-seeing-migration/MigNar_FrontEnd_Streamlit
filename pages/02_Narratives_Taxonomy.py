@@ -291,7 +291,8 @@ NEW_MIN_COUNT = st.sidebar.number_input(
 )
 
 # Debug toggle in sidebar
-show_debug = st.sidebar.checkbox("Show debug info", value=False)
+# show_debug = st.sidebar.checkbox("Show debug info", value=False)
+show_debug = False  # Force disable for production
 
 # ── Main content ───────────────────────────────────────────────────────────────
 st.title(f"Narratives Taxonomy (Revision {chosen_rev})")
