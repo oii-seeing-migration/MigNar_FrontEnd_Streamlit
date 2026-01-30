@@ -115,14 +115,40 @@ div[data-testid="column"] { padding-left: 0 !important; padding-right: 0 !import
 .suggest-row { background: #e8f5e9; border: 1px dashed #81c784; border-radius: 8px; padding: 8px 10px; margin-top: 8px; }
 .suggest-label { color: #2e7d32; font-weight: 600; font-size: 0.9rem; }
 
-/* Sticky save button container */
-.sticky-save-container {
-    position: sticky;
-    top: 0;
-    z-index: 999;
-    background: linear-gradient(to bottom, rgba(255,255,255,1) 0%, rgba(255,255,255,1) 85%, rgba(255,255,255,0) 100%);
-    padding: 10px 0 20px 0;
-    margin-bottom: 10px;
+/* Floating save button - fixed position */
+.floating-save {
+    position: fixed;
+    bottom: 20px;
+    right: 30px;
+    z-index: 9999;
+    background: #1976d2;
+    color: white !important;
+    padding: 12px 24px;
+    border-radius: 30px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    font-weight: 600;
+    font-size: 1rem;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s;
+}
+.floating-save:hover {
+    background: #1565c0;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.4);
+}
+.floating-save.disabled {
+    background: #9e9e9e;
+    cursor: not-allowed;
+}
+
+/* Theme save divider */
+.theme-save-divider {
+    margin: 15px 0;
+    padding: 10px 0;
+    border-top: 1px dashed #e0e0e0;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -418,7 +444,7 @@ def link_button(theme: str, meso: str | None = None, label: str = "View on Artic
 with st.form(key="annotation_form", clear_on_submit=False):
     form_data = {}
     
-    # ── Save Button (will be positioned fixed via CSS) ─────────────────────────
+    # ── Top Save Button ────────────────────────────────────────────────────────
     save_col1, save_col2 = st.columns([1, 1])
     with save_col1:
         submitted = st.form_submit_button("💾 Save All Changes", type="primary", use_container_width=True, disabled=not (USER and AUTH_UID and BIND_OK))
@@ -426,8 +452,13 @@ with st.form(key="annotation_form", clear_on_submit=False):
         if not (USER and AUTH_UID and BIND_OK):
             st.caption("🔐 Sign in to save")
     
+    # Track theme count for showing intermediate save buttons
+    theme_count = 0
+    total_themes = len(visible_themes_sorted)
+    
     # ── Render themes and narratives ───────────────────────────────────────────
     for theme in visible_themes_sorted:
+        theme_count += 1
         total = theme_totals.get(theme, 0)
         in_tax = theme in taxonomy_themes
         new_theme = not in_tax
@@ -623,6 +654,33 @@ with st.form(key="annotation_form", clear_on_submit=False):
                     disabled=True,
                     label_visibility="collapsed"
                 )
+        
+        # ── Save button after each theme ───────────────────────────────────────
+        st.markdown("<div class='theme-save-divider'></div>", unsafe_allow_html=True)
+        save_cols = st.columns([0.7, 0.3])
+        with save_cols[0]:
+            st.caption(f"Theme {theme_count} of {total_themes} complete")
+        with save_cols[1]:
+            # Additional submit button after each theme (all do the same thing)
+            st.form_submit_button(
+                f"💾 Save Progress", 
+                type="secondary", 
+                use_container_width=True,
+                disabled=not (USER and AUTH_UID and BIND_OK),
+                key=f"save_theme_{theme_count}"  # Unique key for each theme's save button
+            )
+    
+    # ── Final Save Button at Bottom ────────────────────────────────────────────
+    st.markdown("---")
+    final_save_col1, final_save_col2, final_save_col3 = st.columns([1, 2, 1])
+    with final_save_col2:
+        st.form_submit_button(
+            "💾 Save All Changes", 
+            type="primary", 
+            use_container_width=True,
+            disabled=not (USER and AUTH_UID and BIND_OK),
+            key="save_final"  # Unique key for the bottom save button
+        )
     
     # Process form submission (after all fields are rendered)
     if submitted and USER and AUTH_UID and BIND_OK:
