@@ -425,43 +425,6 @@ visible_themes_sorted = sorted(visible_themes, key=lambda t: (theme_numbers.get(
 # Fetch existing annotations (not cached)
 prefill_map = fetch_user_annotations(AUTH_UID if AUTH_UID else (USER.get("id") if USER else None), chosen_rev)
 
-# ── TEMPORARY DEBUG: Show what's in prefill_map ────────────────────────────────
-with st.expander("🔍 DEBUG: Prefill Map Contents", expanded=True):
-    st.write(f"**Total annotations fetched:** {len(prefill_map)}")
-    st.write(f"**AUTH_UID:** {AUTH_UID}")
-    st.write(f"**chosen_rev:** {chosen_rev}")
-    
-    # Show all keys in prefill_map
-    if prefill_map:
-        st.write("**All keys in prefill_map:**")
-        for key, value in list(prefill_map.items())[:20]:  # Show first 20
-            theme, meso = key
-            label, comment = value
-            st.write(f"  - Theme: `{repr(theme)}`, Meso: `{repr(meso)}` → Label: `{label}`, Comment: `{comment[:30] if comment else ''}`")
-    
-    # Check specifically for "migrants and terrorism"
-    test_theme = "migrants and terrorism"
-    st.write(f"**Looking for theme:** `{repr(test_theme)}`")
-    
-    # Check if it exists with exact match
-    theme_key = (test_theme, "")
-    if theme_key in prefill_map:
-        st.success(f"✅ Found: {prefill_map[theme_key]}")
-    else:
-        st.error(f"❌ NOT found with key: {repr(theme_key)}")
-        
-        # Try to find similar keys
-        similar = [(k, v) for k, v in prefill_map.items() if "terrorism" in k[0].lower()]
-        if similar:
-            st.write("**Similar keys found:**")
-            for k, v in similar:
-                st.write(f"  - `{repr(k)}` → `{v}`")
-    
-    # Show taxonomy themes for comparison
-    st.write("**Taxonomy themes containing 'terrorism':**")
-    for t in taxonomy.keys():
-        if "terrorism" in t.lower():
-            st.write(f"  - `{repr(t)}`")
 
 
 
