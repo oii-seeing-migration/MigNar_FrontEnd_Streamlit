@@ -425,6 +425,46 @@ visible_themes_sorted = sorted(visible_themes, key=lambda t: (theme_numbers.get(
 # Fetch existing annotations (not cached)
 prefill_map = fetch_user_annotations(AUTH_UID if AUTH_UID else (USER.get("id") if USER else None), chosen_rev)
 
+# ── TEMPORARY DEBUG: Show what's in prefill_map ────────────────────────────────
+with st.expander("🔍 DEBUG: Prefill Map Contents", expanded=True):
+    st.write(f"**Total annotations fetched:** {len(prefill_map)}")
+    st.write(f"**AUTH_UID:** {AUTH_UID}")
+    st.write(f"**chosen_rev:** {chosen_rev}")
+    
+    # Show all keys in prefill_map
+    if prefill_map:
+        st.write("**All keys in prefill_map:**")
+        for key, value in list(prefill_map.items())[:20]:  # Show first 20
+            theme, meso = key
+            label, comment = value
+            st.write(f"  - Theme: `{repr(theme)}`, Meso: `{repr(meso)}` → Label: `{label}`, Comment: `{comment[:30] if comment else ''}`")
+    
+    # Check specifically for "migrants and terrorism"
+    test_theme = "migrants and terrorism"
+    st.write(f"**Looking for theme:** `{repr(test_theme)}`")
+    
+    # Check if it exists with exact match
+    theme_key = (test_theme, "")
+    if theme_key in prefill_map:
+        st.success(f"✅ Found: {prefill_map[theme_key]}")
+    else:
+        st.error(f"❌ NOT found with key: {repr(theme_key)}")
+        
+        # Try to find similar keys
+        similar = [(k, v) for k, v in prefill_map.items() if "terrorism" in k[0].lower()]
+        if similar:
+            st.write("**Similar keys found:**")
+            for k, v in similar:
+                st.write(f"  - `{repr(k)}` → `{v}`")
+    
+    # Show taxonomy themes for comparison
+    st.write("**Taxonomy themes containing 'terrorism':**")
+    for t in taxonomy.keys():
+        if "terrorism" in t.lower():
+            st.write(f"  - `{repr(t)}`")
+
+
+
 if show_debug:
     with st.expander("🔧 Prefill Data", expanded=False):
         st.write(f"Loaded {len(prefill_map)} existing annotations")
@@ -442,6 +482,9 @@ def link_button(theme: str, meso: str | None = None, label: str = "View on Artic
 
 # ── FORM: Wrap all annotations in a form to prevent reloads ────────────────────
 with st.form(key="annotation_form", clear_on_submit=False):
+    
+    # Store widget references to read values after form submission
+    widget_values = {}
     
     # Track which save button was clicked
     save_clicked = False
@@ -497,7 +540,7 @@ with st.form(key="annotation_form", clear_on_submit=False):
         with theme_annot_row[3]:
             if USER and AUTH_UID and BIND_OK:
                 theme_idx = (THEME_ANNOT_OPTIONS.index(theme_label_prev) if theme_label_prev in THEME_ANNOT_OPTIONS else 0)
-                st.selectbox(
+                widget_values[f"theme_annot::{theme}"] = st.selectbox(
                     "theme quality",
                     THEME_ANNOT_OPTIONS,
                     index=theme_idx,
@@ -519,7 +562,7 @@ with st.form(key="annotation_form", clear_on_submit=False):
                 )
         with theme_annot_row[4]:
             if USER and AUTH_UID and BIND_OK:
-                st.text_input(
+                widget_values[f"theme_comment::{theme}"] = st.text_input(
                     "Theme comment",
                     value=theme_comment_prev,
                     key=f"theme_comment::{chosen_rev}::{theme}",
@@ -576,7 +619,7 @@ with st.form(key="annotation_form", clear_on_submit=False):
             with row[3]:
                 if USER and AUTH_UID and BIND_OK:
                     idx = (ANNOT_OPTIONS.index(prev_label) if prev_label in ANNOT_OPTIONS else 0)
-                    st.selectbox(
+                    widget_values[f"meso_annot::{theme}::{mn}"] = st.selectbox(
                         "label",
                         ANNOT_OPTIONS,
                         index=idx,
@@ -598,7 +641,7 @@ with st.form(key="annotation_form", clear_on_submit=False):
                     )
             with row[4]:
                 if USER and AUTH_UID and BIND_OK:
-                    st.text_input(
+                    widget_values[f"meso_comment::{theme}::{mn}"] = st.text_input(
                         "comment",
                         value=prev_comment,
                         key=key_comment,
@@ -626,7 +669,7 @@ with st.form(key="annotation_form", clear_on_submit=False):
             st.markdown("<div class='suggest-row'><span class='suggest-label'>Suggest new meso narratives in comment box, separated by <code>;</code></span></div>", unsafe_allow_html=True)
         with suggest_row[2]:
             if USER and AUTH_UID and BIND_OK:
-                st.text_input(
+                widget_values[f"suggest::{theme}"] = st.text_input(
                     "Suggest new narratives",
                     value=suggest_prev_comment,
                     key=f"suggest::{chosen_rev}::{theme}",
@@ -660,36 +703,49 @@ with st.form(key="annotation_form", clear_on_submit=False):
 
     # ── Process form submission ────────────────────────────────────────────────
     if save_clicked and USER and AUTH_UID and BIND_OK:
-        # Collect all annotations from session state
+        # Collect all annotations from widget_values (direct widget returns)
         annotations_to_save = {}
         
         for theme in visible_themes_sorted:
             # Theme annotations
             theme_key = (theme, "")
-            new_label = st.session_state.get(f"theme_annot::{chosen_rev}::{theme}", "")
-            new_comment = st.session_state.get(f"theme_comment::{chosen_rev}::{theme}", "")
+            new_label = widget_values.get(f"theme_annot::{theme}", "")
+            new_comment = widget_values.get(f"theme_comment::{theme}", "")
             saved_label, saved_comment = prefill_map.get(theme_key, ("", ""))
             
-            if new_label or new_comment or (new_label != saved_label) or (new_comment != saved_comment):
+            # Only save if:
+            # 1. There's new content (non-empty label or comment), OR
+            # 2. Content changed AND the new content is not empty (don't save empty over existing)
+            has_content = bool(new_label) or bool(new_comment.strip())
+            has_changed = (new_label != saved_label) or (new_comment != saved_comment)
+            had_content = bool(saved_label) or bool(saved_comment.strip())
+            
+            # Save if we have content, or if we're intentionally clearing (changed AND had content AND now empty)
+            # But actually, we should NEVER save empty values - only save non-empty
+            if has_content and has_changed:
                 annotations_to_save[theme_key] = (new_label, new_comment)
             
             # Meso annotations
             base_list, extras = theme_narr_map.get(theme, ([], []))
             for mn in base_list + extras:
                 narr_key = (theme, mn)
-                new_label = st.session_state.get(f"annot::{chosen_rev}::{theme}::{mn}", "")
-                new_comment = st.session_state.get(f"comment::{chosen_rev}::{theme}::{mn}", "")
+                new_label = widget_values.get(f"meso_annot::{theme}::{mn}", "")
+                new_comment = widget_values.get(f"meso_comment::{theme}::{mn}", "")
                 saved_label, saved_comment = prefill_map.get(narr_key, ("", ""))
                 
-                if new_label or new_comment or (new_label != saved_label) or (new_comment != saved_comment):
+                has_content = bool(new_label) or bool(new_comment.strip())
+                has_changed = (new_label != saved_label) or (new_comment != saved_comment)
+                
+                if has_content and has_changed:
                     annotations_to_save[narr_key] = (new_label, new_comment)
             
             # Human suggested narratives
             suggest_key = (theme, HUMAN_SUGGESTED_MESO)
-            new_suggest_comment = st.session_state.get(f"suggest::{chosen_rev}::{theme}", "")
+            new_suggest_comment = widget_values.get(f"suggest::{theme}", "")
             _, saved_suggest_comment = prefill_map.get(suggest_key, ("", ""))
             
-            if new_suggest_comment or new_suggest_comment != saved_suggest_comment:
+            # Only save suggestions if there's actual content
+            if new_suggest_comment.strip() and new_suggest_comment != saved_suggest_comment:
                 annotations_to_save[suggest_key] = ("", new_suggest_comment)
         
         if annotations_to_save:
