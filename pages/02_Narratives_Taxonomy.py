@@ -701,66 +701,85 @@ with st.form(key="annotation_form", clear_on_submit=False):
             ):
                 save_clicked = True
 
-    # ── Process form submission ────────────────────────────────────────────────
-    if save_clicked and USER and AUTH_UID and BIND_OK:
-        # Collect all annotations from widget_values (direct widget returns)
-        annotations_to_save = {}
+# ── Process form submission ────────────────────────────────────────────────
+if save_clicked and USER and AUTH_UID and BIND_OK:
+    # SAFEGUARD 1: Re-fetch current annotations from DB before saving
+    # This prevents overwriting data that was saved from another session (cloud vs local)
+    current_db_annotations = fetch_user_annotations(AUTH_UID, chosen_rev)
+    
+    # Collect all annotations from widget_values (direct widget returns)
+    annotations_to_save = {}
+    
+    for theme in visible_themes_sorted:
+        # Theme annotations
+        theme_key = (theme, "")
+        new_label = widget_values.get(f"theme_annot::{theme}", "")
+        new_comment = widget_values.get(f"theme_comment::{theme}", "")
         
-        for theme in visible_themes_sorted:
-            # Theme annotations
-            theme_key = (theme, "")
-            new_label = widget_values.get(f"theme_annot::{theme}", "")
-            new_comment = widget_values.get(f"theme_comment::{theme}", "")
-            saved_label, saved_comment = prefill_map.get(theme_key, ("", ""))
+        # SAFEGUARD 2: Compare against CURRENT DB state, not stale prefill_map
+        db_label, db_comment = current_db_annotations.get(theme_key, ("", ""))
+        
+        # SAFEGUARD 3: Only save if we have actual content
+        has_content = bool(new_label) or bool(new_comment.strip())
+        has_changed = (new_label != db_label) or (new_comment != db_comment)
+        
+        # SAFEGUARD 4: Never overwrite existing DB content with empty values
+        db_has_content = bool(db_label) or bool(db_comment.strip())
+        if db_has_content and not has_content:
+            # Skip - don't overwrite existing annotations with empty
+            continue
+        
+        if has_content and has_changed:
+            annotations_to_save[theme_key] = (new_label, new_comment)
+        
+        # Meso annotations
+        base_list, extras = theme_narr_map.get(theme, ([], []))
+        for mn in base_list + extras:
+            narr_key = (theme, mn)
+            new_label = widget_values.get(f"meso_annot::{theme}::{mn}", "")
+            new_comment = widget_values.get(f"meso_comment::{theme}::{mn}", "")
             
-            # Only save if:
-            # 1. There's new content (non-empty label or comment), OR
-            # 2. Content changed AND the new content is not empty (don't save empty over existing)
+            db_label, db_comment = current_db_annotations.get(narr_key, ("", ""))
+            
             has_content = bool(new_label) or bool(new_comment.strip())
-            has_changed = (new_label != saved_label) or (new_comment != saved_comment)
-            had_content = bool(saved_label) or bool(saved_comment.strip())
+            has_changed = (new_label != db_label) or (new_comment != db_comment)
+            db_has_content = bool(db_label) or bool(db_comment.strip())
             
-            # Save if we have content, or if we're intentionally clearing (changed AND had content AND now empty)
-            # But actually, we should NEVER save empty values - only save non-empty
+            # Never overwrite existing content with empty
+            if db_has_content and not has_content:
+                continue
+            
             if has_content and has_changed:
-                annotations_to_save[theme_key] = (new_label, new_comment)
-            
-            # Meso annotations
-            base_list, extras = theme_narr_map.get(theme, ([], []))
-            for mn in base_list + extras:
-                narr_key = (theme, mn)
-                new_label = widget_values.get(f"meso_annot::{theme}::{mn}", "")
-                new_comment = widget_values.get(f"meso_comment::{theme}::{mn}", "")
-                saved_label, saved_comment = prefill_map.get(narr_key, ("", ""))
-                
-                has_content = bool(new_label) or bool(new_comment.strip())
-                has_changed = (new_label != saved_label) or (new_comment != saved_comment)
-                
-                if has_content and has_changed:
-                    annotations_to_save[narr_key] = (new_label, new_comment)
-            
-            # Human suggested narratives
-            suggest_key = (theme, HUMAN_SUGGESTED_MESO)
-            new_suggest_comment = widget_values.get(f"suggest::{theme}", "")
-            _, saved_suggest_comment = prefill_map.get(suggest_key, ("", ""))
-            
-            # Only save suggestions if there's actual content
-            if new_suggest_comment.strip() and new_suggest_comment != saved_suggest_comment:
-                annotations_to_save[suggest_key] = ("", new_suggest_comment)
+                annotations_to_save[narr_key] = (new_label, new_comment)
         
-        if annotations_to_save:
-            success, fail, errors = batch_upsert_annotations(USER, chosen_rev, annotations_to_save)
-            if fail == 0:
-                st.success(f"✅ Saved {success} annotation(s)")
-                st.rerun()
-            else:
-                st.warning(f"⚠️ Saved {success}, failed {fail}")
-                if errors:
-                    with st.expander("Show errors"):
-                        for err in errors[:10]:
-                            st.error(err)
+        # Human suggested narratives
+        suggest_key = (theme, HUMAN_SUGGESTED_MESO)
+        new_suggest_comment = widget_values.get(f"suggest::{theme}", "")
+        _, db_suggest_comment = current_db_annotations.get(suggest_key, ("", ""))
+        
+        db_has_suggestion = bool(db_suggest_comment.strip())
+        has_suggestion = bool(new_suggest_comment.strip())
+        
+        # Never overwrite existing suggestion with empty
+        if db_has_suggestion and not has_suggestion:
+            continue
+        
+        if has_suggestion and new_suggest_comment != db_suggest_comment:
+            annotations_to_save[suggest_key] = ("", new_suggest_comment)
+    
+    if annotations_to_save:
+        success, fail, errors = batch_upsert_annotations(USER, chosen_rev, annotations_to_save)
+        if fail == 0:
+            st.success(f"✅ Saved {success} annotation(s)")
+            st.rerun()
         else:
-            st.info("No changes to save")
+            st.warning(f"⚠️ Saved {success}, failed {fail}")
+            if errors:
+                with st.expander("Show errors"):
+                    for err in errors[:10]:
+                        st.error(err)
+    else:
+        st.info("No changes to save")
 
 # ── Footer stats ───────────────────────────────────────────────────────────────
 st.markdown("---")
