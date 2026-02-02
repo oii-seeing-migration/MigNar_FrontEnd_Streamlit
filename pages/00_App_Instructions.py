@@ -26,14 +26,14 @@ MigNar uses a **three-level hierarchical approach** to analyze migration narrati
 
 ### 🔹 Level 1: Stance
 The **stance** represents the overall sentiment or position toward migration expressed in an article. The system identifies three types:
-- **Pro-migration**: Articles that express positive views toward migration, migrants, or migration policies
-- **Anti-migration**: Articles that express negative views or opposition to migration
-- **Neutral/Mixed**: Articles that present balanced perspectives or don't express a clear stance
+- **Open**: Statements/Articles where the author advocates direct or indirect support for maintaining or expanding immigration to the host country.
+- **Restrictive**: Statements/Articles where the author advocates direct or indirect support for limiting, controlling, or reducing immigration to the host country.
+- **Neutral**: Statements/Articles that are fully or at least partially related to immigration to the host country, but the author remains impartial and does not express any OPEN or RESTRICTIVE stance.
 
 ### 🔹 Level 2: Themes
 **Themes** are high-level topics or frames used to discuss migration. Each article may contain multiple themes. Examples include:
 - *Economic Impact*
-- *Security and Crime*
+- *International Students*
 - *Humanitarian Concerns*
 - *Cultural Integration*
 - *Border Control*
