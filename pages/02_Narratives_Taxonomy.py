@@ -1,4 +1,4 @@
-import os, re, importlib.util, urllib.parse, base64, json
+import os, re, importlib.util, urllib.parse, base64, json, time
 import pandas as pd
 import streamlit as st
 from supabase import create_client, Client
@@ -15,6 +15,9 @@ SB_URL = st.secrets["supabase"]["url"]
 SB_KEY = st.secrets["supabase"]["anon_key"]
 supabase: Client = create_client(SB_URL, SB_KEY)
 
+# Token refresh buffer - refresh 10 minutes before expiry
+TOKEN_REFRESH_BUFFER_SECONDS = 600
+
 def _b64url_decode(s: str) -> bytes:
     s += "=" * ((4 - len(s) % 4) % 4)
     return base64.urlsafe_b64decode(s)
@@ -29,21 +32,23 @@ def jwt_payload(token: str) -> dict | None:
         return None
 
 def bind_auth_from_session() -> tuple[bool, str | None]:
-    """Bind Supabase auth from session, refreshing token if expired."""
+    """Bind Supabase auth from session, proactively refreshing token before expiry."""
     sess = st.session_state.get("session") or {}
     at = sess.get("access_token")
     rt = sess.get("refresh_token")
+    
     if not at:
         return (False, None)
     
-    # Check if token is expired
+    # Check if token is expired or will expire soon
     payload = jwt_payload(at) or {}
     exp = payload.get("exp", 0)
-    import time
-    is_expired = exp < time.time()
+    now = time.time()
     
-    # If expired and we have a refresh token, try to refresh
-    if is_expired and rt:
+    # Proactively refresh if token expires within buffer time
+    needs_refresh = exp < (now + TOKEN_REFRESH_BUFFER_SECONDS)
+    
+    if needs_refresh and rt:
         try:
             response = supabase.auth.refresh_session(rt)
             if response and response.session:
@@ -56,28 +61,55 @@ def bind_auth_from_session() -> tuple[bool, str | None]:
                 }
                 at = new_at
                 rt = new_rt
+                # Also update user info if available
+                if response.user:
+                    st.session_state.user = {
+                        "id": response.user.id,
+                        "email": response.user.email,
+                        "name": getattr(response.user, "user_metadata", {}).get("full_name") 
+                                or getattr(response.user, "user_metadata", {}).get("name")
+                                or response.user.email,
+                    }
+            else:
+                # Refresh returned no session - try to recover
+                st.warning("⚠️ Session refresh returned no data. Please sign in again.")
+                return (False, None)
         except Exception as e:
-            # Refresh failed - user needs to re-login
-            st.warning("⚠️ Session expired. Please sign in again.")
-            return (False, None)
+            # Log the specific error for debugging
+            error_msg = str(e).lower()
+            if "expired" in error_msg or "invalid" in error_msg:
+                # Refresh token itself expired - clear session and require re-login
+                st.session_state.pop("session", None)
+                st.session_state.pop("user", None)
+                st.warning("⚠️ Session expired. Please sign in again.")
+                return (False, None)
+            else:
+                # Other error - might be temporary, try to continue with existing token
+                pass
     
-    # Set the session
+    # Set the session on supabase client
+    session_set = False
     try:
         try:
             supabase.auth.set_session(at, rt)
+            session_set = True
         except TypeError:
             supabase.auth.set_session(access_token=at, refresh_token=rt)
-    except Exception:
+            session_set = True
+    except Exception as e:
+        # If we can't set session, the token might be truly invalid
         pass
     
-    # Auth the postgrest client
+    # Auth the postgrest client for database operations
     try:
         supabase.postgrest.auth(at)
     except Exception:
         pass
     
-    # Get user ID
+    # Get user ID - try multiple methods
     uid = None
+    
+    # Method 1: Get from Supabase auth
     try:
         me = supabase.auth.get_user()
         au = getattr(me, "user", None) or me
@@ -85,9 +117,14 @@ def bind_auth_from_session() -> tuple[bool, str | None]:
     except Exception:
         pass
     
+    # Method 2: Extract from JWT payload
     if not uid:
         payload = jwt_payload(at) or {}
         uid = payload.get("sub")
+    
+    # Method 3: Get from session state user
+    if not uid and st.session_state.get("user"):
+        uid = st.session_state.user.get("id")
     
     ok = bool(uid)
     return (ok, uid)
