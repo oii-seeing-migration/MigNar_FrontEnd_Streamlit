@@ -248,11 +248,11 @@ st.markdown("""
 | Label | When to Use | Comment Required? |
 |-------|-------------|-------------------|
 | **Good** | Well-formed, specific, distinct, and correctly placed | No |
-| **Too Broad** | Too vague or generic—doesn't mean anything clear | Optional |
-| **Too Narrow** | Too specific—only describes one particular story or event | Optional |
-| **Duplicate** | Same as another entry (even if worded differently) | **Yes** — specify which |
-| **Wrong Theme** | Meso narrative belongs under a different theme | **Yes** — suggest where |
-| **Poor Wording** | Meaning is unclear or awkwardly phrased | **Yes** — suggest reword |
+| **Too Broad** | Too vague or generic—doesn't mean anything clear | **Optional** — write a narrowed down version if needed |
+| **Too Narrow** | Too specific—only describes one particular story or event | **Optional** — write a broadened down version if needed |
+| **Duplicate** | Same as another entry (even if worded differently) | **Encouraged** — specify which |
+| **Wrong Theme** | Meso narrative belongs under a different theme | **Encouraged** — suggest where |
+| **Poor Wording** | Meaning is unclear or awkwardly phrased | **Encouraged** — suggest reword |
 | **Other Issues** | Out of scope of migration or problematic for other reasons | Optional |
 """)
 
