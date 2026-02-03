@@ -79,13 +79,32 @@ all possible recurring narratives about migration to the UK.
 
 Currently, we have instructed LLMs to **suggest new narratives** when they encounter content that doesn't fit 
 existing entries. Your task is to review both:
-- The **predefined narratives**
-- The **LLM-suggested additions**
+- The **predefined narratives** (numbered for easy reference)
+- The **LLM-suggested additions** (marked as NEW, not numbered)
 
 You will decide which narratives to **keep**, **merge**, **generalise**, or **discard**.
 
 Once finalised, the taxonomy becomes **fixed**—the LLMs will only select from this approved list, ensuring 
 consistent annotation across all documents.
+""")
+
+# ── Numbering System ───────────────────────────────────────────────────────────
+st.subheader("Numbering System")
+
+st.markdown("""
+All predefined themes and meso narratives are **numbered** for easy reference:
+
+- **Themes** are numbered as `T1`, `T2`, `T3`, etc.
+- **Meso narratives** are numbered as `1.1`, `1.2`, `2.1`, `2.2`, etc. (theme number + narrative number)
+
+**Example:**
+- `T5` refers to the 5th theme
+- `5.3` refers to the 3rd meso narrative under theme 5
+
+You can use these numbers in your comments to refer to other narratives. For example:
+> *"This is a duplicate of 3.7"* or *"Should be moved to T2"*
+
+**Note:** NEW narratives (suggested by LLMs) and NEW themes are **not numbered** since they haven't been added to the official taxonomy yet.
 """)
 
 # ── Broad Objectives ───────────────────────────────────────────────────────────
@@ -135,7 +154,7 @@ st.markdown("#### Step 1: Sign In and Navigate")
 st.markdown("""
 1. Sign in to the [MigNar app](https://mignar.streamlit.app/)
 2. Navigate to the **[Narratives Taxonomy](https://mignar.streamlit.app/Narratives_Taxonomy)** page
-3. You will see **themes highlighted in blue**, with a list of meso narratives underneath each one
+3. You will see **themes highlighted in blue** (with numbers like T1, T2, etc.), with a list of numbered meso narratives underneath each one
 """)
 
 st.markdown("#### Step 2: Initial Read-Through")
@@ -148,8 +167,8 @@ st.markdown("""
 Once you've completed the initial read-through, look at the **first theme** and the meso narratives below it.
 
 Immediately underneath each blue-highlighted theme, you will see:
+- A **dropdown menu** for your assessment (Label)
 - A **comments box**
-- A **dropdown menu** for your assessment
 """)
 
 st.markdown("**Use the dropdown to select one of the following:**")
@@ -206,17 +225,18 @@ with col7:
 st.markdown("""
 **Comments:**
 - If you think the theme could be reworded to better capture the meso narratives, note this in the comment box
-- If you marked something as **"Duplicate"**, leave a comment mentioning the exact narrative you believe it duplicates
-- If you chose **"Wrong Theme"**, suggest the theme it should be moved to, or propose a new theme
+- If you marked something as **"Duplicate"**, leave a comment mentioning the exact narrative (e.g., *"duplicate of 3.7"*)
+- If you chose **"Wrong Theme"**, suggest the theme it should be moved to (e.g., *"should be under T2"*), or propose a new theme
 - If you chose **"Poor Wording"**, suggest how you would reword it in the comments
 - If you chose **"Other Issues"**, explain the problem (e.g., out of scope, factually incorrect, etc.)
 """)
 
 st.markdown("#### Step 4: Assess Meso Narratives")
 st.markdown("""
-After assessing the theme, look at its **meso narratives** and undertake the same actions:
+After assessing the theme, look at its **meso narratives** (numbered like 1.1, 1.2, etc.) and undertake the same actions:
 - Use the dropdown to select: **Good**, **Too Broad**, **Too Narrow**, **Duplicate**, **Wrong Theme**, **Poor Wording**, or **Other Issues**
 - Add any comments as needed
+- Use the numbering system to reference other narratives in your comments
 """)
 
 st.info("""
@@ -234,11 +254,33 @@ You do **not** need to look at every article, but they may help you orient yours
 If the content is confusing or obviously wrong—even after reviewing articles—please note this in the comment.
 """)
 
-st.markdown("#### Step 5: Save Your Work")
-st.success("""
-**💾 After completing a batch of annotations, click the Save button to save your work.**
+st.markdown("#### Step 5: Suggest New Narratives")
+st.markdown("""
+At the bottom of each theme's meso narratives, you'll find a **"➕ Suggest New"** row. If you believe there are meso narratives missing from the theme, you can suggest them here:
 
-Your annotations are valuable—don't forget to save regularly!
+- Enter your suggested narratives in the text box
+- Separate multiple suggestions with a semicolon (`;`)
+- Example: *"Migrants enrich local cuisine; Migrants revive dying industries"*
+
+Your suggestions will be saved and reviewed for inclusion in future taxonomy revisions.
+""")
+
+st.markdown("#### Step 6: Save Your Work — IMPORTANT!")
+
+st.error("""
+**⚠️ SAVE FREQUENTLY!**
+
+There is a **"💾 Save Progress"** button at the end of each theme. **Click it after finishing each theme!**
+
+The app may occasionally log you out due to session timeouts. If you don't save frequently, **you may lose your work**. 
+
+**Best practice:** Complete one theme → Click Save → Move to the next theme.
+""")
+
+st.success("""
+**💾 After completing annotations for a theme, click the "Save Progress" button at the bottom of that theme.**
+
+Your annotations are valuable—don't forget to save after each theme!
 """)
 
 # ── Quick Reference Card ───────────────────────────────────────────────────────
@@ -250,10 +292,17 @@ st.markdown("""
 | **Good** | Well-formed, specific, distinct, and correctly placed | No |
 | **Too Broad** | Too vague or generic—doesn't mean anything clear | **Optional** — write a narrowed down version if needed |
 | **Too Narrow** | Too specific—only describes one particular story or event | **Optional** — write a broadened down version if needed |
-| **Duplicate** | Same as another entry (even if worded differently) | **Encouraged** — specify which |
-| **Wrong Theme** | Meso narrative belongs under a different theme | **Encouraged** — suggest where |
+| **Duplicate** | Same as another entry (even if worded differently) | **Encouraged** — specify which (e.g., "duplicate of 3.7") |
+| **Wrong Theme** | Meso narrative belongs under a different theme | **Encouraged** — suggest where (e.g., "move to T2") |
 | **Poor Wording** | Meaning is unclear or awkwardly phrased | **Encouraged** — suggest reword |
 | **Other Issues** | Out of scope of migration or problematic for other reasons | Optional |
+""")
+
+st.markdown("""
+**Numbering Reference:**
+- Themes: `T1`, `T2`, `T3`, ...
+- Meso narratives: `1.1`, `1.2`, `2.1`, `2.2`, ...
+- Use these in comments to cross-reference other items
 """)
 
 st.markdown("---")
