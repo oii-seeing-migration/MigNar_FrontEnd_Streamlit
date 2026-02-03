@@ -32,20 +32,20 @@ The **stance** represents the overall sentiment or position toward migration exp
 
 ### 🔹 Level 2: Themes
 **Themes** are high-level topics or frames used to discuss migration. Each article may contain multiple themes. Examples include:
-- *Economic Impact*
+- *Border Control & Freedom of Movement*
 - *International Students*
-- *Humanitarian Concerns*
-- *Cultural Integration*
-- *Border Control*
-- *Political Debate*
+- *Climate Migration*
+- *Migrants & Culture*
+- *Migrants & Crimes*
+- *Migrants, Economy, & Labour Market*
 
 Themes organize narratives into broad categories that help understand the primary focus of discourse.
 
 ### 🔹 Level 3: Meso Narratives
-**Meso narratives** are specific storylines or arguments within each theme. They represent the concrete ways themes are discussed. For example, under the "Economic Impact" theme, you might find:
-- "Migrants take jobs from native workers"
-- "Migrants contribute to economic growth"
-- "Migrants burden the welfare system"
+**Meso narratives** are specific storylines or arguments within each theme. They represent the concrete ways themes are discussed. For example:
+- theme: <Migrants, Economy, & Labour Market> - meso narrative: "Migrants take jobs from native workers"
+- theme: <Migrants, Economy, & Labour Market> - meso narrative: "Migrants contribute to economic growth"
+- theme: <Migrants & Crimes> - meso narrative: "Migration brings dangerous sexual offenders"
 
 Meso narratives are the most granular level and capture the actual narrative content being communicated.
 
@@ -53,12 +53,12 @@ Meso narratives are the most granular level and capture the actual narrative con
 The relationship works as follows:
 
 Article
-├── Stance: Anti-migration
-├── Theme: Economic Impact
+├── Stance: Restrictive
+├── Theme: <Migrants, Economy, & Labour Market>
 │ ├── Meso Narrative: "Migrants burden the welfare system"
 │ └── Meso Narrative: "Economic strain from uncontrolled migration"
-└── Theme: Security and Crime
-└── Meso Narrative: "Border security is insufficient"
+└── Theme: <Migrants & Crimes>
+│ └── Meso Narrative: "Border security is insufficient"
             
 
 Each article can have:

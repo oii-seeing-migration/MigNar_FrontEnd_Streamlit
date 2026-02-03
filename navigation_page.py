@@ -166,7 +166,7 @@ else:
     st.divider()
     
     # Tabs for different auth methods
-    tab1, tab2 = st.tabs(["📧 Email", "🌐 Social Login"])
+    tab1, tab2 = st.tabs(["📧 Email", "🌐 Social Login (under development, use email for now)"])
     
     with tab1:
         # Email/Password Authentication
