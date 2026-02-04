@@ -254,7 +254,7 @@ You do **not** need to look at every article, but they may help you orient yours
 If the content is confusing or obviously wrong—even after reviewing articles—please note this in the comment.
 """)
 
-st.markdown("#### Step 5: Suggest New Narratives")
+st.markdown("#### Step 5: Suggest New Meso Narratives")
 st.markdown("""
 At the bottom of each theme's meso narratives, you'll find a **"➕ Suggest New"** row. If you believe there are meso narratives missing from the theme, you can suggest them here:
 
@@ -265,7 +265,24 @@ At the bottom of each theme's meso narratives, you'll find a **"➕ Suggest New"
 Your suggestions will be saved and reviewed for inclusion in future taxonomy revisions.
 """)
 
-st.markdown("#### Step 6: Save Your Work — IMPORTANT!")
+st.markdown("#### Step 6: Suggest Entirely New Themes")
+st.markdown("""
+At the **very bottom of the page** (after all existing themes), you'll find a special **"🌟 Suggest New Themes"** section.
+
+Use this if you believe there's a **completely new theme** missing from the taxonomy—one that doesn't fit under any existing theme.
+
+For each new theme suggestion:
+1. **Theme Name**: Enter a clear, descriptive name for the theme
+2. **Meso Narratives**: List the meso narratives that would fall under this theme, separated by semicolons (`;`)
+
+**Example:**
+- Theme Name: *"Environmental Impact of Migration"*
+- Meso Narratives: *"Migrants contribute to urban sprawl; Migration affects local ecosystems; Migrants bring sustainable practices"*
+
+There are multiple slots available if you have several theme suggestions. Leave unused slots empty—only filled entries will be saved.
+""")
+
+st.markdown("#### Step 7: Save Your Work — IMPORTANT!")
 
 st.error("""
 **⚠️ SAVE FREQUENTLY!**
@@ -303,6 +320,10 @@ st.markdown("""
 - Themes: `T1`, `T2`, `T3`, ...
 - Meso narratives: `1.1`, `1.2`, `2.1`, `2.2`, ...
 - Use these in comments to cross-reference other items
+
+**Suggestion Features:**
+- **Suggest New Meso**: Add missing meso narratives to an existing theme (bottom of each theme)
+- **Suggest New Themes**: Propose entirely new themes with their meso narratives (bottom of the page)
 """)
 
 st.markdown("---")
