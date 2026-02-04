@@ -187,6 +187,33 @@ div[data-testid="column"] { padding-left: 0 !important; padding-right: 0 !import
     padding: 10px 0;
     border-top: 1px dashed #e0e0e0;
 }
+
+/* New theme suggestion section */
+.new-theme-section {
+    background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+    border: 2px solid #66bb6a;
+    border-radius: 12px;
+    padding: 20px;
+    margin-top: 30px;
+}
+.new-theme-header {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #2e7d32;
+    margin-bottom: 10px;
+}
+.new-theme-desc {
+    color: #555;
+    font-size: 0.9rem;
+    margin-bottom: 15px;
+}
+.new-theme-entry {
+    background: white;
+    border: 1px solid #a5d6a7;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 10px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -204,6 +231,9 @@ ANNOT_TABLE = "taxonomy_annotations"
 
 # Special meso name for human-suggested narratives
 HUMAN_SUGGESTED_MESO = "human suggested narratives"
+
+# Special theme prefix for human-suggested new themes
+HUMAN_SUGGESTED_THEME_PREFIX = "human suggested: "
 
 # Sources to exclude by default (US Congress and UK Parliament party breakdowns)
 EXCLUDED_SOURCES_DEFAULT = {
@@ -305,6 +335,25 @@ def fetch_user_annotations(user_id: str | None, revision: int) -> dict[tuple[str
     except Exception as e:
         st.error(f"Error fetching annotations: {e}")
         return {}
+
+def fetch_user_new_theme_suggestions(user_id: str | None, revision: int) -> list[tuple[str, str]]:
+    """Fetch user's previously suggested new themes. Returns list of (theme_name, meso_narratives)"""
+    if not user_id:
+        return []
+    try:
+        res = supabase.table(ANNOT_TABLE).select("theme,meso").eq("user_id", user_id).eq("revision", revision).like("theme", f"{HUMAN_SUGGESTED_THEME_PREFIX}%").execute()
+        items = res.data or []
+        suggestions = []
+        for i in items:
+            if isinstance(i, dict):
+                theme_full = i.get("theme", "")
+                if theme_full.startswith(HUMAN_SUGGESTED_THEME_PREFIX):
+                    theme_name = theme_full[len(HUMAN_SUGGESTED_THEME_PREFIX):]
+                    meso = i.get("meso", "")
+                    suggestions.append((theme_name, meso))
+        return suggestions
+    except Exception as e:
+        return []
 
 # ── DB write ───────────────────────────────────────────────────────────────────
 def batch_upsert_annotations(user: dict, revision: int, annotations: dict) -> tuple[int, int, list[str]]:
@@ -462,7 +511,8 @@ visible_themes_sorted = sorted(visible_themes, key=lambda t: (theme_numbers.get(
 # Fetch existing annotations (not cached)
 prefill_map = fetch_user_annotations(AUTH_UID if AUTH_UID else (USER.get("id") if USER else None), chosen_rev)
 
-
+# Fetch existing new theme suggestions
+existing_new_themes = fetch_user_new_theme_suggestions(AUTH_UID if AUTH_UID else (USER.get("id") if USER else None), chosen_rev)
 
 
 if show_debug:
@@ -701,6 +751,90 @@ with st.form(key="annotation_form", clear_on_submit=False):
             ):
                 save_clicked = True
 
+    # ══════════════════════════════════════════════════════════════════════════
+    # ── SUGGEST NEW THEMES SECTION ────────────────────────────────────────────
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown("---")
+    st.markdown("""
+    <div class='new-theme-section'>
+        <div class='new-theme-header'>🌟 Suggest New Themes</div>
+        <div class='new-theme-desc'>
+            Can't find a suitable theme for a narrative you have in mind? Propose entirely new themes here.
+            Each new theme should include a name and its associated meso narratives (separated by <code>;</code>).
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Number of new theme slots to show
+    NUM_NEW_THEME_SLOTS = 10
+    
+    # Pre-populate with existing suggestions
+    existing_theme_dict = {t: m for t, m in existing_new_themes}
+    
+    for slot_idx in range(1, NUM_NEW_THEME_SLOTS + 1):
+        # Check if there's an existing suggestion for this slot
+        existing_theme_name = ""
+        existing_meso_list = ""
+        if slot_idx <= len(existing_new_themes):
+            existing_theme_name, existing_meso_list = existing_new_themes[slot_idx - 1]
+        
+        st.markdown(f"<div class='new-theme-entry'><strong>New Theme #{slot_idx}</strong></div>", unsafe_allow_html=True)
+        
+        new_theme_cols = st.columns([0.35, 0.65])
+        with new_theme_cols[0]:
+            if USER and AUTH_UID and BIND_OK:
+                widget_values[f"new_theme_name::{slot_idx}"] = st.text_input(
+                    f"Theme Name #{slot_idx}",
+                    value=existing_theme_name,
+                    key=f"new_theme_name::{chosen_rev}::{slot_idx}",
+                    placeholder="e.g., Environmental Impact of Migration",
+                    label_visibility="collapsed"
+                )
+            else:
+                st.text_input(
+                    f"Theme Name #{slot_idx}",
+                    value="",
+                    key=f"new_theme_name::{chosen_rev}::{slot_idx}",
+                    placeholder="Sign in to suggest new themes",
+                    disabled=True,
+                    label_visibility="collapsed"
+                )
+        with new_theme_cols[1]:
+            if USER and AUTH_UID and BIND_OK:
+                widget_values[f"new_theme_meso::{slot_idx}"] = st.text_input(
+                    f"Meso Narratives #{slot_idx}",
+                    value=existing_meso_list,
+                    key=f"new_theme_meso::{chosen_rev}::{slot_idx}",
+                    placeholder="Meso narratives separated by ; (e.g., Migrants contribute to carbon footprint; Migration affects local ecosystems)",
+                    label_visibility="collapsed"
+                )
+            else:
+                st.text_input(
+                    f"Meso Narratives #{slot_idx}",
+                    value="",
+                    key=f"new_theme_meso::{chosen_rev}::{slot_idx}",
+                    placeholder="Sign in to add meso narratives",
+                    disabled=True,
+                    label_visibility="collapsed"
+                )
+    
+    st.caption("💡 **Tip:** Leave unused slots empty. Only filled entries will be saved.")
+    
+    # Final save button at the bottom
+    st.markdown("<div class='theme-save-divider'></div>", unsafe_allow_html=True)
+    final_save_cols = st.columns([0.6, 0.4])
+    with final_save_cols[0]:
+        st.markdown("**Save all your annotations and suggestions**")
+    with final_save_cols[1]:
+        if st.form_submit_button(
+            "💾 Save All Changes",
+            type="primary",
+            use_container_width=True,
+            disabled=not (USER and AUTH_UID and BIND_OK),
+            key="save_all_final"
+        ):
+            save_clicked = True
+
 # ── Process form submission ────────────────────────────────────────────────
 if save_clicked and USER and AUTH_UID and BIND_OK:
     # SAFEGUARD 1: Re-fetch current annotations from DB before saving
@@ -752,7 +886,7 @@ if save_clicked and USER and AUTH_UID and BIND_OK:
             if has_content and has_changed:
                 annotations_to_save[narr_key] = (new_label, new_comment)
         
-        # Human suggested narratives
+        # Human suggested narratives (for existing themes)
         suggest_key = (theme, HUMAN_SUGGESTED_MESO)
         new_suggest_comment = widget_values.get(f"suggest::{theme}", "")
         _, db_suggest_comment = current_db_annotations.get(suggest_key, ("", ""))
@@ -766,6 +900,25 @@ if save_clicked and USER and AUTH_UID and BIND_OK:
         
         if has_suggestion and new_suggest_comment != db_suggest_comment:
             annotations_to_save[suggest_key] = ("", new_suggest_comment)
+    
+    # ── Process New Theme Suggestions ──────────────────────────────────────────
+    for slot_idx in range(1, NUM_NEW_THEME_SLOTS + 1):
+        new_theme_name = widget_values.get(f"new_theme_name::{slot_idx}", "").strip()
+        new_theme_meso = widget_values.get(f"new_theme_meso::{slot_idx}", "").strip()
+        
+        # Only save if theme name is provided
+        if new_theme_name:
+            # Create the special theme key format: "human suggested: <theme_name>"
+            theme_key_full = f"{HUMAN_SUGGESTED_THEME_PREFIX}{new_theme_name}"
+            new_theme_db_key = (theme_key_full, new_theme_meso)
+            
+            # Check if this exact suggestion already exists
+            existing_key = (theme_key_full, new_theme_meso)
+            _, existing_meso = current_db_annotations.get(existing_key, ("", ""))
+            
+            # Save if it's new or changed
+            if new_theme_meso != existing_meso:
+                annotations_to_save[new_theme_db_key] = ("", "")  # label is empty, meso content goes in the meso field
     
     if annotations_to_save:
         success, fail, errors = batch_upsert_annotations(USER, chosen_rev, annotations_to_save)
@@ -791,9 +944,10 @@ if USER and AUTH_UID:
     n_annotated = len([v for v in prefill_map.values() if v[0] in (REAL_OPTIONS | REAL_THEME_OPTIONS)])
     n_commented = len([v for v in prefill_map.values() if v[1].strip()])
     n_suggested = len([k for k, v in prefill_map.items() if k[1] == HUMAN_SUGGESTED_MESO and v[1].strip()])
+    n_new_themes = len(existing_new_themes)
     total_items = len(visible_themes_sorted) + sum(len(base) + len(extras) for base, extras in theme_narr_map.values())
     st.caption(
-        f"**Your Progress:** {n_annotated} annotated, {n_commented} commented, {n_suggested} themes with suggestions (out of {total_items} total items) • "
+        f"**Your Progress:** {n_annotated} annotated, {n_commented} commented, {n_suggested} themes with meso suggestions, {n_new_themes} new theme(s) suggested (out of {total_items} total items) • "
         f"Revision {chosen_rev}: {n_tax_themes} themes, {n_tax_narr} base narratives, {n_new_narr_kept} new narratives (count≥{NEW_MIN_COUNT})"
     )
 else:
