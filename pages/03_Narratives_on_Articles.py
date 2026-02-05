@@ -81,6 +81,51 @@ def gather_meso_set(row: pd.Series):
     """Legacy function - returns all meso narratives regardless of agreement"""
     return set(row["_meso_models_dict"].keys())
 
+# ── Stance extraction functions ────────────────────────────────────────────────
+def extract_stance_per_model(row: pd.Series) -> dict[str, str]:
+    """Extract stance from each model's stance_<model> column (exported from notebook)"""
+    stances = {}
+    for col in row.index:
+        if isinstance(col, str) and col.startswith("stance_"):
+            model_name = col[len("stance_"):]
+            stance_val = row[col]
+            if isinstance(stance_val, str) and stance_val.strip():
+                stances[model_name] = stance_val.strip().upper()
+    return stances
+
+def compute_ensemble_stance(stances: dict[str, str]) -> str:
+    """
+    Compute ensemble stance following the formula from 04_Aggregative_Dashboard.py:
+    - If #OPEN > #RESTRICTIVE → OPEN
+    - If #RESTRICTIVE > #OPEN → RESTRICTIVE
+    - Else → NEUTRAL
+    """
+    if not stances:
+        return "UNKNOWN"
+    
+    stance_counts = Counter(stances.values())
+    n_open = stance_counts.get("OPEN", 0)
+    n_restrictive = stance_counts.get("RESTRICTIVE", 0)
+    n_neutral = stance_counts.get("NEUTRAL", 0)
+    n_irrelevant = stance_counts.get("IRRELEVANT", 0)
+    
+    # If majority says irrelevant, return IRRELEVANT
+    total = n_open + n_restrictive + n_neutral + n_irrelevant
+    if total > 0 and n_irrelevant > total / 2:
+        return "IRRELEVANT"
+    
+    # Ensemble logic (excluding IRRELEVANT from tie-breaking)
+    if n_open > n_restrictive:
+        return "OPEN"
+    elif n_restrictive > n_open:
+        return "RESTRICTIVE"
+    else:
+        return "NEUTRAL"
+
+# Apply stance extraction
+df["_stance_per_model"] = df.apply(extract_stance_per_model, axis=1)
+df["_ensemble_stance"] = df["_stance_per_model"].apply(compute_ensemble_stance)
+
 df["_meso_models_dict"] = df.apply(count_models_per_meso, axis=1)
 df["_meso_all_set"] = df.apply(gather_meso_set, axis=1)
 
@@ -107,11 +152,26 @@ source_options = ["(All)"] + (sorted(df["source_table"].unique()) if "source_tab
 src_choice = st.sidebar.selectbox("Source Table", source_options, index=0)
 work_df = df if src_choice == "(All)" or "source_table" not in df.columns else df[df["source_table"] == src_choice]
 
+
+# ── Stance Filter ──────────────────────────────────────────────────────────────
+STANCE_OPTIONS = ["(All)", "OPEN", "RESTRICTIVE", "NEUTRAL", "IRRELEVANT"]
+stance_filter = st.sidebar.selectbox(
+    "Stance (Ensemble)",
+    options=STANCE_OPTIONS,
+    index=0,
+    help="Filter articles by their ensemble stance. Ensemble uses majority voting: OPEN wins if #OPEN > #RESTRICTIVE, else RESTRICTIVE if #RESTRICTIVE > #OPEN, else NEUTRAL."
+)
+
+# Apply stance filter to work_df (not df)
+if stance_filter != "(All)":
+    work_df = work_df[work_df["_ensemble_stance"] == stance_filter].copy()
+
+
 if THEME_COL:
     theme_vals = sorted(t for t in work_df[THEME_COL].unique() if isinstance(t, str) and t.strip())
     if pre_theme not in theme_vals:
         pre_theme = None
-    theme_choice = st.sidebar.selectbox("Sample Theme", ["(All)"] + theme_vals,
+    theme_choice = st.sidebar.selectbox("Theme", ["(All)"] + theme_vals,
                                         index=(theme_vals.index(pre_theme) + 1) if pre_theme else 0)
     if theme_choice != "(All)":
         work_df = work_df[work_df[THEME_COL] == theme_choice]
@@ -174,7 +234,18 @@ row = work_df[work_df[title_col] == title_choice].iloc[0]
 st.title(row[title_col])
 if isinstance(row.get("url"), str) and row["url"]:
     st.markdown(f"[Open Source Link]({row['url']})")
-st.caption(f"Source: {row.get('source_table','')} | Date: {row.get('pub_date','')}")
+
+# Display stance badge
+ensemble_stance = row.get("_ensemble_stance", "UNKNOWN")
+stance_colors = {
+    "OPEN": "🟢",
+    "RESTRICTIVE": "🔴",
+    "NEUTRAL": "🟡",
+    "IRRELEVANT": "⚪",
+    "UNKNOWN": "❓"
+}
+stance_badge = stance_colors.get(ensemble_stance, "❓")
+st.caption(f"Source: {row.get('source_table','')} | Date: {row.get('pub_date','')} | Stance (Ensemble): {stance_badge} **{ensemble_stance}**")
 
 body_text = row.get("body", "") or ""
 
@@ -336,13 +407,17 @@ st.markdown("""
 .highlight:hover { background:#ffeb3b; }
 .highlight-selected { background:#80deea; padding:2px 3px; border-radius:3px; cursor:help; }
 .highlight-selected:hover { background:#4dd0e1; }
+.stance-open { color: #2e7d32; font-weight: 600; }
+.stance-restrictive { color: #c62828; font-weight: 600; }
+.stance-neutral { color: #f9a825; font-weight: 600; }
+.stance-irrelevant { color: #757575; font-weight: 600; }
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown(apply_highlights(body_text, segments), unsafe_allow_html=True)
 
 with st.expander("Narratives Metadata"):
-    rows = [{
+    rows_list = [{
         "#": i,
         "selected_meso_filter": (selected_meso == o["meso"]) if selected_meso else False,
         "model": o["model"],
@@ -351,5 +426,71 @@ with st.expander("Narratives Metadata"):
         "text fragment": (o["fragment"] if o["has_fragment"] else "[no fragment]"),
         "fragment_present": o["has_fragment"]
     } for i, o in enumerate(all_ann_frag_objs)]
-    meta_df = pd.DataFrame(rows)
-    st.dataframe(meta_df, width="stretch", hide_index=True)
+    meta_df = pd.DataFrame(rows_list)
+    st.dataframe(meta_df, width='stretch', hide_index=True)
+
+# ── Stance Metadata Table ──────────────────────────────────────────────────────
+with st.expander("Stance Metadata"):
+    stance_per_model = row.get("_stance_per_model", {})
+    
+    if stance_per_model:
+        # Build stance table rows
+        stance_rows = []
+        for model, stance in sorted(stance_per_model.items()):
+            stance_rows.append({
+                "Model": model,
+                "Stance": stance
+            })
+        
+        # Add ensemble row
+        stance_rows.append({
+            "Model": "🔷 Ensemble",
+            "Stance": ensemble_stance
+        })
+        
+        stance_meta_df = pd.DataFrame(stance_rows)
+        
+        # Display as HTML table with inline styling (no jinja2 dependency)
+        def stance_to_badge(stance: str) -> str:
+            badges = {
+                "OPEN": '<span style="background-color: #c8e6c9; color: #2e7d32; padding: 2px 8px; border-radius: 4px; font-weight: 600;">OPEN</span>',
+                "RESTRICTIVE": '<span style="background-color: #ffcdd2; color: #c62828; padding: 2px 8px; border-radius: 4px; font-weight: 600;">RESTRICTIVE</span>',
+                "NEUTRAL": '<span style="background-color: #fff9c4; color: #f57f17; padding: 2px 8px; border-radius: 4px; font-weight: 600;">NEUTRAL</span>',
+                "IRRELEVANT": '<span style="background-color: #e0e0e0; color: #616161; padding: 2px 8px; border-radius: 4px; font-weight: 600;">IRRELEVANT</span>',
+                "UNKNOWN": '<span style="background-color: #f5f5f5; color: #9e9e9e; padding: 2px 8px; border-radius: 4px; font-weight: 600;">UNKNOWN</span>',
+            }
+            return badges.get(stance, stance)
+        
+        # Build HTML table
+        html_rows = []
+        for _, r in stance_meta_df.iterrows():
+            html_rows.append(f"<tr><td>{r['Model']}</td><td>{stance_to_badge(r['Stance'])}</td></tr>")
+        
+        html_table = f"""
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="border-bottom: 2px solid #ddd;">
+                    <th style="text-align: left; padding: 8px;">Model</th>
+                    <th style="text-align: left; padding: 8px;">Stance</th>
+                </tr>
+            </thead>
+            <tbody>
+                {"".join(html_rows)}
+            </tbody>
+        </table>
+        """
+        st.markdown(html_table, unsafe_allow_html=True)
+        
+        # Summary statistics
+        stance_counts = Counter(stance_per_model.values())
+        summary_cols = st.columns(4)
+        with summary_cols[0]:
+            st.metric("🟢 OPEN", stance_counts.get("OPEN", 0))
+        with summary_cols[1]:
+            st.metric("🔴 RESTRICTIVE", stance_counts.get("RESTRICTIVE", 0))
+        with summary_cols[2]:
+            st.metric("🟡 NEUTRAL", stance_counts.get("NEUTRAL", 0))
+        with summary_cols[3]:
+            st.metric("⚪ IRRELEVANT", stance_counts.get("IRRELEVANT", 0))
+    else:
+        st.info("No stance data available for this article. Re-run the data export notebook to include stance columns.")
