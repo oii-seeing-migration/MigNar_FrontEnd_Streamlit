@@ -327,24 +327,27 @@ st.markdown("""
 """)
 
 st.markdown("---")
+st.markdown("---")
+st.markdown("---")
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # TASK 2: VALIDATING LLM LABELS
 # ═══════════════════════════════════════════════════════════════════════════
 st.header("Task 2: Validating LLM Labels")
 
-st.warning("🚧 **This section is under construction** — Instructions to be completed.")
-
-st.markdown("""
+st.warning("""
 **What this task is about:**
 
-Once the taxonomy is finalised, we need to verify that the LLMs are *correctly applying* the taxonomy labels to articles. In this task, you will:
+Now that we have a taxonomy, we need to verify that the LLMs are *correctly applying* the labels to articles. In this task, you will:
 
-- Review articles that have been labelled with specific **stances** (pro-migration, anti-migration, neutral)
-- Review articles that have been labelled with specific **themes** and **meso narratives**
-- Judge whether the LLM's labels are **correct**, **incorrect**, or **partially correct**
-- Identify cases where the LLM missed a label or applied an irrelevant one
+- Review articles that have been labelled by multiple LLMs
+- Judge whether the LLM's **narrative labels** are correct for each article
+- Provide your own **stance assessment** (pro-migration, anti-migration, neutral, or irrelevant)
+- Optionally suggest **missing narratives** that the LLMs failed to identify
+""")
 
+st.markdown("""
 **Key difference from Task 1:**
 
 | Task 1: Taxonomy Annotation | Task 2: Label Validation |
@@ -352,11 +355,239 @@ Once the taxonomy is finalised, we need to verify that the LLMs are *correctly a
 | Is this narrative *well-defined*? | Is this narrative *correctly applied* to this article? |
 | Does it belong in the taxonomy? | Does the article actually express this narrative? |
 | Is the wording clear? | Did the LLM identify the right text fragment? |
+""")
 
-**Coming soon:**
-- Detailed instructions for the validation interface
-- Guidelines for edge cases
-- Examples of correct vs. incorrect labels
+# ── Getting Started ────────────────────────────────────────────────────────────
+st.subheader("Getting Started")
+
+st.markdown("""
+You will receive an **Excel spreadsheet** containing a random sample of articles to validate. Each row in the spreadsheet contains a link that takes you directly to that article's validation page.
+
+**Your workflow is simple:**
+1. Open the Excel file
+2. Click on a link to open an article
+3. Complete the validation on the webpage
+4. Return to Excel and move to the next article
+""")
+
+st.info("""
+**📋 You don't need to edit anything in the Excel file** — it's just a list of links to help you navigate through your assigned articles.
+""")
+
+# ── The Validation Page ────────────────────────────────────────────────────────
+st.subheader("The Validation Page")
+
+st.markdown("""
+When you click a link from the Excel file, you'll be taken to the **[Narratives on Articles](https://mignar.streamlit.app/Narratives_on_Articles)** page showing that specific article.
+
+**What you'll see:**
+1. **Article title and source** at the top
+2. **Article body** with highlighted text fragments (yellow = narrative detected, blue = selected narrative filter)
+3. **Validation form** below the article with three sections to complete
+""")
+
+# ── Signing In ─────────────────────────────────────────────────────────────────
+st.subheader("Step 1: Sign In")
+
+st.markdown("""
+Before you can save any validations, you must be signed in.
+
+1. Check the **sidebar** on the left — it will show whether you're signed in
+2. If not signed in, click the link to go to the **Sign In page**
+3. Once signed in, return to the article (click the link from Excel again)
+""")
+
+st.error("""
+**⚠️ Important:** If you're not signed in, you can view the article but **cannot save your validations**. Always check that you see the green "✅ Signed in" message before starting.
+""")
+
+# ── Understanding the Article View ─────────────────────────────────────────────
+st.subheader("Step 2: Read the Article")
+
+st.markdown("""
+The article body will display with **highlighted text fragments**:
+""")
+
+col1, col2 = st.columns(2)
+with col1:
+    st.markdown("""
+    <div style="padding: 1rem; border-radius: 0.5rem; background-color: #fff59d;">
+    <strong>Yellow highlights</strong>
+    </div>
+    """, unsafe_allow_html=True)
+    st.markdown("Text fragments where LLMs detected a narrative")
+
+with col2:
+    st.markdown("""
+    <div style="padding: 1rem; border-radius: 0.5rem; background-color: #80deea;">
+    <strong>Blue highlights</strong>
+    </div>
+    """, unsafe_allow_html=True)
+    st.markdown("The currently selected meso narrative (if filtered)")
+
+st.markdown("""
+**Tip:** Hover over any highlighted text to see which model identified it and what narrative theme/meso narrative was assigned.
+
+Read through the article to understand its content and stance toward migration before moving to the validation form.
+""")
+
+# ── Validating Narratives ──────────────────────────────────────────────────────
+st.subheader("Step 3: Validate Narrative Annotations")
+
+st.markdown("""
+Below the article, you'll see a table listing all the narrative annotations made by the LLMs.
+
+**The table shows:**
+| Column | Description |
+|--------|-------------|
+| **Model** | Which LLM made this annotation (hidden by default to avoid bias) |
+| **Theme** | The narrative theme identified |
+| **Meso Narrative** | The specific meso narrative assigned |
+| **Fragment** | The text fragment from the article |
+| **Score** | Your validation score (you fill this in) |
+""")
+
+st.info("""
+**👁️ Spoiler Feature:** To avoid bias, **model names are hidden** behind an expander (👁️ icon). 
+
+**Best practice:** Score the annotation first based on Theme, Meso Narrative, and Fragment — then reveal the model name if you're curious.
+""")
+
+st.markdown("""
+**Scoring Guide:**
+
+For each annotation, select a score from **0 to 5**:
+""")
+
+score_col1, score_col2 = st.columns(2)
+with score_col1:
+    st.error("**0-2 = Incorrect**")
+    st.markdown("""
+    - **0**: Completely wrong — the narrative doesn't appear in the article at all
+    - **1**: Mostly wrong — very weak or tangential connection
+    - **2**: Partially wrong — some connection but misapplied
+    """)
+
+with score_col2:
+    st.success("**3-5 = Correct**")
+    st.markdown("""
+    - **3**: Acceptable — the narrative is present but could be better matched
+    - **4**: Good — clear and appropriate annotation
+    - **5**: Perfect — exactly right narrative for this text
+    """)
+
+st.markdown("""
+**Leave blank (—)** if you want to skip a particular annotation.
+""")
+
+# ── Suggesting Missing Narratives ──────────────────────────────────────────────
+st.subheader("Step 4: Suggest Missing Narratives (Optional)")
+
+st.markdown("""
+If you notice a narrative in the article that the LLMs **failed to identify**, you can suggest it.
+
+There are **3 slots** available for suggestions. For each:
+
+| Field | What to enter |
+|-------|---------------|
+| **Theme** | The narrative theme (e.g., "Economic Impact") |
+| **Meso Narrative** | The specific narrative (e.g., "Migrants contribute to tax revenue") |
+| **Text Fragment** | The relevant quote from the article (optional but helpful) |
+| **Confidence** | How confident you are: 3 (somewhat), 4 (confident), 5 (very confident) |
+
+Leave unused slots empty — only filled entries will be saved.
+""")
+
+# ── Validating Stance ──────────────────────────────────────────────────────────
+st.subheader("Step 5: Validate Stance")
+
+st.markdown("""
+The final section asks you to assess the **overall stance** of the article toward migration.
+""")
+
+st.markdown("**Select one of the following:**")
+
+stance_col1, stance_col2 = st.columns(2)
+with stance_col1:
+    st.success("**OPEN**")
+    st.markdown("The article is generally positive or welcoming toward migration")
+    
+    st.error("**RESTRICTIVE**")
+    st.markdown("The article is generally negative or critical of migration")
+
+with stance_col2:
+    st.warning("**NEUTRAL**")
+    st.markdown("The article presents balanced views or no clear stance")
+    
+    st.markdown("""
+    <div style="padding: 1rem; border-radius: 0.5rem; background-color: #e0e0e0;">
+    <strong>IRRELEVANT</strong>
+    </div>
+    """, unsafe_allow_html=True)
+    st.markdown("The article is not actually about migration")
+
+st.info("""
+**👁️ Avoiding Bias:** The LLM stance predictions are hidden by default.
+
+**Best practice:** Make your own stance assessment **first**, then click the expander to reveal what the LLMs predicted. This ensures your judgement isn't influenced by the models.
+""")
+
+st.markdown("""
+You can also add an optional **comment** to explain your reasoning or note anything unusual about the article.
+""")
+
+# ── Saving Your Work ───────────────────────────────────────────────────────────
+st.subheader("Step 6: Save Your Validations")
+
+st.error("""
+**⚠️ IMPORTANT: Click "💾 Save Validations" when you're done with each article!**
+
+Your work is **not automatically saved**. You must click the save button at the bottom of the form.
+""")
+
+st.markdown("""
+After saving:
+- You'll see a success message confirming how many validations were saved
+- You can then return to your Excel file and click the next article link
+- If you return to the same article later, your previous responses will be pre-filled
+""")
+
+# ── Quick Reference ────────────────────────────────────────────────────────────
+st.subheader("📋 Quick Reference Card")
+
+st.markdown("""
+| Step | Action |
+|------|--------|
+| **1** | Click article link from Excel |
+| **2** | Verify you're signed in (check sidebar) |
+| **3** | Read the article and highlighted fragments |
+| **4** | Score each narrative annotation (0-5) |
+| **5** | Suggest any missing narratives (optional) |
+| **6** | Select your stance assessment |
+| **7** | Click "💾 Save Validations" |
+| **8** | Return to Excel, click next link |
+""")
+
+st.markdown("""
+**Scoring Quick Guide:**
+- **0-2** = Incorrect (narrative doesn't fit the article)
+- **3-5** = Correct (narrative appropriately applied)
+- **—** = Skip (no judgement)
+
+**Stance Options:**
+- **OPEN** = Pro-migration
+- **RESTRICTIVE** = Anti-migration
+- **NEUTRAL** = Balanced/no stance
+- **IRRELEVANT** = Not about migration
+""")
+
+st.success("""
+**💡 Tips for Efficient Validation:**
+- Read the article fully before scoring
+- Score annotations before revealing model names
+- Make your stance judgement before revealing LLM predictions
+- Save after each article — don't batch multiple articles
+- If unsure, leave the score blank and move on
 """)
 
 st.divider()
