@@ -43,9 +43,9 @@ Themes organize narratives into broad categories that help understand the primar
 
 ### 🔹 Level 3: Meso Narratives
 **Meso narratives** are specific storylines or arguments within each theme. They represent the concrete ways themes are discussed. For example:
-- theme: <Migrants, Economy, & Labour Market> - meso narrative: "Migrants take jobs from native workers"
-- theme: <Migrants, Economy, & Labour Market> - meso narrative: "Migrants contribute to economic growth"
-- theme: <Migrants & Crimes> - meso narrative: "Migration brings dangerous sexual offenders"
+- **theme**: *Migrants, Economy, & Labour Market* ⟶ **meso narrative**: *Migrants take jobs from native workers*
+- **theme**: *Migrants, Economy, & Labour Market* ⟶ **meso narrative**: *Migrants contribute to economic growth*
+- **theme**: *Migrants & Crimes* ⟶ **meso narrative**: *Migration brings dangerous sexual offenders*
 
 Meso narratives are the most granular level and capture the actual narrative content being communicated.
 
@@ -54,10 +54,10 @@ The relationship works as follows:
 
 Article
 ├── Stance: Restrictive
-├── Theme: <Migrants, Economy, & Labour Market>
+├── Theme: *Migrants, Economy, & Labour Market*
 │ ├── Meso Narrative: "Migrants burden the welfare system"
 │ └── Meso Narrative: "Economic strain from uncontrolled migration"
-└── Theme: <Migrants & Crimes>
+└── Theme: *Migrants & Crimes*
 │ └── Meso Narrative: "Border security is insufficient"
             
 
