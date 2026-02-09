@@ -198,6 +198,8 @@ def _get_param(k):
 
 pre_theme = _get_param("theme")
 pre_meso  = _get_param("meso")
+pre_source_table = _get_param("source_table")
+pre_title = _get_param("title")
 
 DATA_PATH = os.getenv("MESO_SAMPLES_PATH") or os.path.join(os.getenv("EXPORT_DIR") or "./data", "meso_samples.parquet")
 
@@ -303,8 +305,12 @@ available_models = sorted(set(available_models))
 
 min_agreement = st.sidebar.slider("Min Models Agreement", min_value=1, max_value=len(available_models) if available_models else 1, value=2, help="Minimum number of models that must agree on a meso narrative for it to appear in the dropdown")
 
+
 source_options = ["(All)"] + (sorted(df["source_table"].unique()) if "source_table" in df.columns else [])
-src_choice = st.sidebar.selectbox("Source Table", source_options, index=0)
+pre_source_idx = 0
+if pre_source_table and pre_source_table in source_options:
+    pre_source_idx = source_options.index(pre_source_table)
+src_choice = st.sidebar.selectbox("Source Table", source_options, index=pre_source_idx)
 work_df = df if src_choice == "(All)" or "source_table" not in df.columns else df[df["source_table"] == src_choice]
 
 STANCE_OPTIONS = ["(All)", "OPEN", "RESTRICTIVE", "NEUTRAL", "IRRELEVANT"]
@@ -367,7 +373,13 @@ if not title_col:
     st.stop()
 
 titles = work_df[title_col].tolist()
-title_choice = st.sidebar.selectbox("Record", titles, index=0)
+pre_title_idx = 0
+if pre_title:
+    from urllib.parse import unquote
+    pre_title_decoded = unquote(pre_title)
+    if pre_title_decoded in titles:
+        pre_title_idx = titles.index(pre_title_decoded)
+title_choice = st.sidebar.selectbox("Record", titles, index=pre_title_idx)
 row = work_df[work_df[title_col] == title_choice].iloc[0]
 
 # ── Main content ───────────────────────────────────────────────────────────────

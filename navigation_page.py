@@ -407,21 +407,21 @@ else:
                 else:
                     st.warning("⚠️ Please sign in first using one of the links above.")
 
-    # Debug section
-    with st.expander("🛠️ Developer Info"):
-        st.write("**Redirect URL:**", REDIRECT_URL)
-        st.write("**Query Params:**", dict(st.query_params))
-        st.write("**Session State:**")
-        st.json({
-            "user": st.session_state.user,
-            "auth_processed": st.session_state.auth_processed,
-            "has_session": st.session_state.session is not None
-        })
+    # # Debug section
+    # with st.expander("🛠️ Developer Info"):
+    #     st.write("**Redirect URL:**", REDIRECT_URL)
+    #     st.write("**Query Params:**", dict(st.query_params))
+    #     st.write("**Session State:**")
+    #     st.json({
+    #         "user": st.session_state.user,
+    #         "auth_processed": st.session_state.auth_processed,
+    #         "has_session": st.session_state.session is not None
+    #     })
         
-        if st.button("🗑️ Clear All Session Data"):
-            st.session_state.user = None
-            st.session_state.session = None
-            st.session_state.auth_processed = False
-            for key in list(st.query_params.keys()):
-                del st.query_params[key]
-            st.rerun()
+    #     if st.button("🗑️ Clear All Session Data"):
+    #         st.session_state.user = None
+    #         st.session_state.session = None
+    #         st.session_state.auth_processed = False
+    #         for key in list(st.query_params.keys()):
+    #             del st.query_params[key]
+    #         st.rerun()

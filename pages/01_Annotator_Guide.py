@@ -324,15 +324,15 @@ Now that we have a taxonomy, we need to verify that the LLMs are *correctly appl
 - Provide your own **stance assessment** (*open*, *restrictive*, *neutral*, or *irrelevant*) to compare against the LLMs' stance predictions
 """)
 
-st.markdown("""
-**Key difference from Task 1:**
+# st.markdown("""
+# **Key difference from Task 1:**
 
-| Task 1: Taxonomy Annotation | Task 2: Label Validation |
-|-----------------------------|--------------------------|
-| Is this narrative *well-defined*? | Is this narrative *correctly applied* to this article? |
-| Does it belong in the taxonomy? | Does the article actually express this narrative? |
-| Is the wording clear? | Did the LLM identify the right text fragment? |
-""")
+# | Task 1: Taxonomy Annotation | Task 2: Label Validation |
+# |-----------------------------|--------------------------|
+# | Is this narrative *well-defined*? | Is this narrative *correctly applied* to this article? |
+# | Does it belong in the taxonomy? | Does the article actually express this narrative? |
+# | Is the wording clear? | Did the LLM identify the right text fragment? |
+# """)
 
 # ── Getting Started ────────────────────────────────────────────────────────────
 st.subheader("Getting Started")
