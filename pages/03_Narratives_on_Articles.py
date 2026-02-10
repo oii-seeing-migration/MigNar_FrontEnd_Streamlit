@@ -277,13 +277,14 @@ if THEME_COL:
         pre_theme = None
     theme_choice = st.sidebar.selectbox("Theme", ["(All)"] + theme_vals, index=(theme_vals.index(pre_theme) + 1) if pre_theme else 0)
     if theme_choice != "(All)":
-        work_df = work_df[work_df[THEME_COL] == theme_choice]
+        work_df = work_df[work_df[THEME_COL] == theme_choice].copy()
 else:
     theme_choice = "(All)"
 
 def filter_meso_by_agreement(meso_models_dict, min_agree):
     return {meso for meso, models in meso_models_dict.items() if len(models) >= min_agree}
 
+work_df = work_df.copy()
 work_df["_meso_filtered_set"] = work_df["_meso_models_dict"].apply(lambda d: filter_meso_by_agreement(d, min_agreement))
 
 all_meso_values = sorted({m for s in work_df["_meso_filtered_set"] for m in s})
