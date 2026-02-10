@@ -18,6 +18,7 @@ from lib.auth import (
     restore_auth_from_storage,
     sign_out,
     cleanup_old_sessions,
+    get_auth_debug_state,
 )
 
 # -----------------------------------------------------------------------------
@@ -62,6 +63,9 @@ if "show_signup" not in st.session_state:
 if not st.session_state.user:
     if restore_auth_from_storage():
         st.session_state.auth_processed = True
+
+with st.expander("Auth Debug"):
+    st.json(get_auth_debug_state())
 
 # -----------------------------------------------------------------------------
 # Helper to decode JWT

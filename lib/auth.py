@@ -62,20 +62,29 @@ def cleanup_old_sessions(max_age_days: int = 7):
 
 # ─── Cookie-based session ID (extra-streamlit-components) ────────────────────
 
+# ─── Cookie-based session ID (parent document) ───────────────────────────────
+
 def _get_cookie_manager():
     if "_cookie_manager" not in st.session_state:
         try:
             import extra_streamlit_components as stx
         except Exception:
-            if not st.session_state.get("_cookie_manager_missing"):
-                st.warning("Install extra-streamlit-components: `pip install extra-streamlit-components`")
-                st.session_state["_cookie_manager_missing"] = True
             return None
         st.session_state["_cookie_manager"] = stx.CookieManager()
     return st.session_state["_cookie_manager"]
 
 def _get_cookie_sid() -> str | None:
     """Read session ID from browser cookie."""
+    # Prefer server-side cookies if available (Streamlit >= 1.37)
+    try:
+        cookies = st.context.cookies
+        val = cookies.get(COOKIE_NAME)
+        if val:
+            return val
+    except Exception:
+        pass
+
+    # Fallback to CookieManager (if available)
     mgr = _get_cookie_manager()
     if not mgr:
         return None
@@ -85,25 +94,73 @@ def _get_cookie_sid() -> str | None:
         return None
 
 def _set_cookie_sid(sid: str):
-    """Set session ID cookie (7 days)."""
+    """Set session ID cookie (7 days) in parent document."""
+    import streamlit.components.v1 as components
+
+    js = f"""
+    <script>
+    if (window.parent && window.parent.document) {{
+      window.parent.document.cookie = "{COOKIE_NAME}={sid}; path=/; max-age={7*86400}; SameSite=Lax";
+    }} else {{
+      document.cookie = "{COOKIE_NAME}={sid}; path=/; max-age={7*86400}; SameSite=Lax";
+    }}
+    </script>
+    """
+    components.html(js, height=0, width=0)
+
+    # Optional fallback for environments where CookieManager works
     mgr = _get_cookie_manager()
-    if not mgr:
-        return
-    try:
-        mgr.set(COOKIE_NAME, sid, max_age=7 * 86400, path="/", same_site="Lax")
-    except Exception:
-        pass
+    if mgr:
+        try:
+            mgr.set(COOKIE_NAME, sid, max_age=7 * 86400, path="/", same_site="Lax")
+        except Exception:
+            pass
 
 def _clear_cookie_sid():
     """Clear session ID cookie."""
+    import streamlit.components.v1 as components
+
+    js = f"""
+    <script>
+    if (window.parent && window.parent.document) {{
+      window.parent.document.cookie = "{COOKIE_NAME}=; path=/; max-age=0; SameSite=Lax";
+    }} else {{
+      document.cookie = "{COOKIE_NAME}=; path=/; max-age=0; SameSite=Lax";
+    }}
+    </script>
+    """
+    components.html(js, height=0, width=0)
+
     mgr = _get_cookie_manager()
-    if not mgr:
-        return
+    if mgr:
+        try:
+            mgr.delete(COOKIE_NAME)
+        except Exception:
+            pass
+
+def _get_url_sid() -> str | None:
     try:
-        mgr.delete(COOKIE_NAME)
+        val = st.query_params.get("sid")
+    except Exception:
+        return None
+    if isinstance(val, list):
+        return val[0] if val else None
+    return val if isinstance(val, str) else None
+
+def _set_url_sid(sid: str):
+    try:
+        st.query_params["sid"] = sid
     except Exception:
         pass
-    
+
+def _clear_url_sid():
+    try:
+        if "sid" in st.query_params:
+            del st.query_params["sid"]
+    except Exception:
+        pass
+
+
 # ─── Supabase client ─────────────────────────────────────────────────────────
 
 def get_supabase_client() -> Client:
@@ -147,14 +204,16 @@ def save_auth_to_storage(access_token: str, refresh_token: str, user: dict):
     
     # Set browser cookie for persistence across refresh/new WS sessions
     _set_cookie_sid(sid)
+    _set_url_sid(sid)
 
 def clear_auth_from_storage():
     """Clear server-side session + cookie."""
-    sid = st.session_state.get("_auth_sid") or _get_cookie_sid()
+    sid = st.session_state.get("_auth_sid") or _get_cookie_sid() or _get_url_sid()
     if sid:
         _delete_session(sid)
     st.session_state.pop("_auth_sid", None)
     _clear_cookie_sid()
+    _clear_url_sid()
 
 def restore_auth_from_storage() -> bool:
     """
@@ -166,7 +225,7 @@ def restore_auth_from_storage() -> bool:
         return False
     
     # Get session ID: first from session_state, then from cookie
-    sid = st.session_state.get("_auth_sid") or _get_cookie_sid()
+    sid = st.session_state.get("_auth_sid") or _get_cookie_sid() or _get_url_sid()
     if not sid:
         return False
     
@@ -189,6 +248,10 @@ def restore_auth_from_storage() -> bool:
         st.session_state.session = {"access_token": at, "refresh_token": rt}
         st.session_state.user = user
         st.session_state["_auth_sid"] = sid
+        if _get_cookie_sid() and _get_url_sid() == sid:
+            _clear_url_sid()
+        else:
+            _set_url_sid(sid)
         return True
     elif rt:
         try:
@@ -214,6 +277,10 @@ def restore_auth_from_storage() -> bool:
                     "refresh_token": new_rt,
                     "user": st.session_state.user,
                 })
+                if _get_cookie_sid() and _get_url_sid() == sid:
+                    _clear_url_sid()
+                else:
+                    _set_url_sid(sid)
                 return True
         except Exception:
             _delete_session(sid)
@@ -303,6 +370,42 @@ def bind_auth_from_session() -> tuple[bool, str | None, Client]:
     return (bool(uid), uid, supabase)
 
 # ─── Public API ───────────────────────────────────────────────────────────────
+
+def get_auth_debug_state() -> dict:
+    sid_cookie = _get_cookie_sid()
+    sid_state = st.session_state.get("_auth_sid")
+    sid_url = _get_url_sid()
+    sid = sid_state or sid_cookie or sid_url
+
+    stored = _read_session(sid) if sid else None
+    stored_user = (stored or {}).get("user") or {}
+    stored_at = (stored or {}).get("access_token")
+
+    stored_exp = None
+    if stored_at:
+        stored_exp = (jwt_payload(stored_at) or {}).get("exp")
+
+    sess = st.session_state.get("session") or {}
+    sess_at = sess.get("access_token")
+    sess_exp = None
+    if sess_at:
+        sess_exp = (jwt_payload(sess_at) or {}).get("exp")
+
+    return {
+        "cookie_sid": sid_cookie,
+        "url_sid": sid_url,
+        "session_sid": sid_state,
+        "active_sid": sid,
+        "session_file_exists": bool(sid and os.path.exists(_session_file(sid))),
+        "session_file_ts": (stored or {}).get("_ts"),
+        "stored_user_id": stored_user.get("id"),
+        "stored_has_access_token": bool(stored_at),
+        "stored_access_exp": stored_exp,
+        "session_state_user_id": (st.session_state.get("user") or {}).get("id"),
+        "session_state_has_access_token": bool(sess_at),
+        "session_state_access_exp": sess_exp,
+    }
+
 
 def get_current_user() -> dict | None:
     return st.session_state.get("user")
