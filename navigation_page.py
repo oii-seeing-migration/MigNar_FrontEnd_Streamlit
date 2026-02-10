@@ -57,15 +57,15 @@ if "auth_processed" not in st.session_state:
 if "show_signup" not in st.session_state:
     st.session_state.show_signup = False
 
-# # -----------------------------------------------------------------------------
-# # Restore auth from server-side session (survives refresh via cookie)
-# # -----------------------------------------------------------------------------
-# if not st.session_state.user:
-#     if restore_auth_from_storage():
-#         st.session_state.auth_processed = True
+# -----------------------------------------------------------------------------
+# Restore auth from server-side session (survives refresh via cookie)
+# -----------------------------------------------------------------------------
+if not st.session_state.user:
+    if restore_auth_from_storage():
+        st.session_state.auth_processed = True
 
-# with st.expander("Auth Debug"):
-#     st.json(get_auth_debug_state())
+with st.expander("Auth Debug"):
+    st.json(get_auth_debug_state())
 
 # -----------------------------------------------------------------------------
 # Helper to decode JWT
