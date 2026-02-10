@@ -265,21 +265,61 @@ def extract_stance_per_model(row: pd.Series) -> dict[str, str]:
     return stances
 
 def compute_ensemble_stance(stances: dict[str, str]) -> str:
+    """
+    Compute ensemble stance from individual model stances.
+    
+    Algorithm:
+    1. Plurality rule: If a single label has the highest count, assign that label.
+    2. Tiebreaking: When multiple labels share the maximum count:
+       - If both OPEN and RESTRICTIVE are tied leaders (both > 0), assign NEUTRAL
+       - Otherwise, apply priority ordering: IRRELEVANT > NEUTRAL > OPEN > RESTRICTIVE
+    
+    Args:
+        stances: Dict mapping model_name -> stance label (OPEN/RESTRICTIVE/NEUTRAL/IRRELEVANT)
+    
+    Returns:
+        Ensemble stance label
+    """
     if not stances:
         return "UNKNOWN"
+    
+    # Count votes for each stance label
     stance_counts = Counter(stances.values())
-    n_open = stance_counts.get("OPEN", 0)
-    n_restrictive = stance_counts.get("RESTRICTIVE", 0)
-    n_irrelevant = stance_counts.get("IRRELEVANT", 0)
-    total = sum(stance_counts.values())
-    if total > 0 and n_irrelevant > total / 2:
-        return "IRRELEVANT"
-    if n_open > n_restrictive:
-        return "OPEN"
-    elif n_restrictive > n_open:
-        return "RESTRICTIVE"
-    else:
+    c_open = stance_counts.get("OPEN", 0)
+    c_restrictive = stance_counts.get("RESTRICTIVE", 0)
+    c_neutral = stance_counts.get("NEUTRAL", 0)
+    c_irrelevant = stance_counts.get("IRRELEVANT", 0)
+    
+    counts = {
+        "OPEN": c_open,
+        "RESTRICTIVE": c_restrictive,
+        "NEUTRAL": c_neutral,
+        "IRRELEVANT": c_irrelevant,
+    }
+    
+    # Find maximum count
+    max_count = max(counts.values())
+    
+    # Find all labels with maximum count (winners)
+    winners = [label for label, count in counts.items() if count == max_count]
+    
+    # Plurality rule: single winner
+    if len(winners) == 1:
+        return winners[0]
+    
+    # Tiebreaking
+    # If both OPEN and RESTRICTIVE are among tied leaders with count > 0, assign NEUTRAL
+    if "OPEN" in winners and "RESTRICTIVE" in winners and c_open > 0 and c_restrictive > 0:
         return "NEUTRAL"
+    
+    # Otherwise, apply priority ordering: IRRELEVANT > NEUTRAL > OPEN > RESTRICTIVE
+    priority_order = ["IRRELEVANT", "NEUTRAL", "OPEN", "RESTRICTIVE"]
+    for label in priority_order:
+        if label in winners:
+            return label
+    
+    # Fallback (should not reach here)
+    return "UNKNOWN"
 
 df["_stance_per_model"] = df.apply(extract_stance_per_model, axis=1)
 df["_ensemble_stance"] = df["_stance_per_model"].apply(compute_ensemble_stance)

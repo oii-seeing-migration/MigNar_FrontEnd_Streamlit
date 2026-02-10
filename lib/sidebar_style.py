@@ -35,7 +35,7 @@ def apply_sidebar_names():
             visibility: hidden;
         }
         [data-testid="stSidebarNav"] li:nth-child(6) span::before {
-            content: "📊 Aggregative Dashboard";
+            content: "📊 𝗗𝗮𝘀𝗵𝗯𝗼𝗮𝗿𝗱: Aggregative";
             visibility: visible;
         }
         
@@ -44,7 +44,7 @@ def apply_sidebar_names():
             visibility: hidden;
         }
         [data-testid="stSidebarNav"] li:nth-child(7) span::before {
-            content: "⚖️ Contrastive Dashboard";
+            content: "⚖️ 𝗗𝗮𝘀𝗵𝗯𝗼𝗮𝗿𝗱: Contrastive";
             visibility: visible;
         }
         
@@ -53,7 +53,7 @@ def apply_sidebar_names():
             visibility: hidden;
         }
         [data-testid="stSidebarNav"] li:nth-child(8) span::before {
-            content: "📈 Temporal Dashboard";
+            content: "📈 𝗗𝗮𝘀𝗵𝗯𝗼𝗮𝗿𝗱: Temporal";
             visibility: visible;
         }
         
@@ -72,6 +72,15 @@ def apply_sidebar_names():
         }
         [data-testid="stSidebarNav"] li:nth-child(3) span::before {
             content: "📝 Annotators' Guide";
+            visibility: visible;
+        }
+                
+        /* 9. Feedback */
+        [data-testid="stSidebarNav"] li:nth-child(9) span {
+            visibility: hidden;
+        }
+        [data-testid="stSidebarNav"] li:nth-child(9) span::before {
+            content: "💬 Feedback";
             visibility: visible;
         }
     </style>
