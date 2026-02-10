@@ -57,21 +57,21 @@ if "auth_processed" not in st.session_state:
 if "show_signup" not in st.session_state:
     st.session_state.show_signup = False
 
-# -----------------------------------------------------------------------------
-# Restore auth from server-side session (survives refresh via cookie)
-# -----------------------------------------------------------------------------
-if not st.session_state.user:
-    if restore_auth_from_storage():
-        st.session_state.auth_processed = True
+# # -----------------------------------------------------------------------------
+# # Restore auth from server-side session (survives refresh via cookie)
+# # -----------------------------------------------------------------------------
+# if not st.session_state.user:
+#     if restore_auth_from_storage():
+#         st.session_state.auth_processed = True
 
-with st.expander("Auth Debug"):
-    st.json(get_auth_debug_state())
+# with st.expander("Auth Debug"):
+#     st.json(get_auth_debug_state())
 
 # -----------------------------------------------------------------------------
 # Helper to decode JWT
 # -----------------------------------------------------------------------------
 def base64url_decode(data: str) -> bytes:
-    padding = '=' * ((4 - len(data) % 4) % 4)
+    padding = "=" * ((4 - len(data) % 4) % 4)
     return base64.urlsafe_b64decode(data + padding)
 
 def decode_jwt(token: str) -> dict:
@@ -80,15 +80,38 @@ def decode_jwt(token: str) -> dict:
         if len(parts) != 3:
             return {}
         payload = base64url_decode(parts[1])
-        return json.loads(payload.decode('utf-8'))
-    except:
+        return json.loads(payload.decode("utf-8"))
+    except Exception:
         return {}
+
+def get_query_param(name: str):
+    try:
+        return st.query_params.get(name)
+    except Exception:
+        qp = st.experimental_get_query_params()
+        val = qp.get(name)
+        if isinstance(val, list):
+            return val[0] if val else None
+        return val
+
+def clear_oauth_params():
+    try:
+        qp = st.query_params
+        if "access_token" in qp:
+            del qp["access_token"]
+        if "refresh_token" in qp:
+            del qp["refresh_token"]
+    except Exception:
+        qp = st.experimental_get_query_params()
+        qp.pop("access_token", None)
+        qp.pop("refresh_token", None)
+        st.experimental_set_query_params(**qp)
 
 # -----------------------------------------------------------------------------
 # Handle tokens from query params (OAuth callback)
 # -----------------------------------------------------------------------------
-access_token = st.query_params.get("access_token")
-refresh_token = st.query_params.get("refresh_token")
+access_token = get_query_param("access_token")
+refresh_token = get_query_param("refresh_token")
 
 if access_token and not st.session_state.auth_processed:
     with st.spinner("🔄 Processing login..."):
@@ -120,9 +143,10 @@ if access_token and not st.session_state.auth_processed:
                 save_auth_to_storage(access_token, refresh_token, user_data)
 
                 # Clean OAuth params from URL (keep sid)
-                del st.query_params["access_token"]
-                if "refresh_token" in st.query_params:
-                    del st.query_params["refresh_token"]
+                clear_oauth_params()
+                # del st.query_params["access_token"]
+                # if "refresh_token" in st.query_params:
+                #     del st.query_params["refresh_token"]
 
                 st.success("✅ Login successful!")
                 st.rerun()
