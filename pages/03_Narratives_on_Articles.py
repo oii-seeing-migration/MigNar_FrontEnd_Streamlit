@@ -417,8 +417,24 @@ pre_title_idx = 0
 if pre_title:
     from urllib.parse import unquote
     pre_title_decoded = unquote(pre_title)
+    
+    # First try exact match
     if pre_title_decoded in titles:
         pre_title_idx = titles.index(pre_title_decoded)
+    else:
+        # Try prefix match (for truncated titles ending with "...")
+        if pre_title_decoded.endswith("..."):
+            prefix = pre_title_decoded[:-3]  # Remove the "..."
+            for idx, t in enumerate(titles):
+                if t.startswith(prefix):
+                    pre_title_idx = idx
+                    break
+        else:
+            # Try if any title starts with the decoded value
+            for idx, t in enumerate(titles):
+                if t.startswith(pre_title_decoded) or pre_title_decoded.startswith(t.rstrip("...")):
+                    pre_title_idx = idx
+                    break
 title_choice = st.sidebar.selectbox("Record", titles, index=pre_title_idx)
 row = work_df[work_df[title_col] == title_choice].iloc[0]
 
