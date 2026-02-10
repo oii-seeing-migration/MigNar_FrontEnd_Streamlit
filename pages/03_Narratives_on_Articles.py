@@ -13,102 +13,107 @@ st.set_page_config(page_title="Narratives on Articles",
 from lib.sidebar_style import apply_sidebar_names
 apply_sidebar_names()
 
-# ── Supabase client ────────────────────────────────────────────────────────────
-SB_URL = st.secrets["supabase"]["url"]
-SB_KEY = st.secrets["supabase"]["anon_key"]
-supabase: Client = create_client(SB_URL, SB_KEY)
+from lib.auth import require_auth
 
-TOKEN_REFRESH_BUFFER_SECONDS = 600
+# At the top of the page (after st.set_page_config)
+BIND_OK, AUTH_UID, USER, supabase = require_auth()
+
+# ── Supabase client ────────────────────────────────────────────────────────────
+# SB_URL = st.secrets["supabase"]["url"]
+# SB_KEY = st.secrets["supabase"]["anon_key"]
+# supabase: Client = create_client(SB_URL, SB_KEY)
+
+# TOKEN_REFRESH_BUFFER_SECONDS = 600
 
 STANCE_VALIDATIONS_TABLE = "stance_validations"
 NARRATIVE_VALIDATIONS_TABLE = "narrative_validations"
 
-def _b64url_decode(s: str) -> bytes:
-    s += "=" * ((4 - len(s) % 4) % 4)
-    return base64.urlsafe_b64decode(s)
+# def _b64url_decode(s: str) -> bytes:
+#     s += "=" * ((4 - len(s) % 4) % 4)
+#     return base64.urlsafe_b64decode(s)
 
-def jwt_payload(token: str) -> dict | None:
-    try:
-        parts = token.split(".")
-        if len(parts) != 3:
-            return None
-        return json.loads(_b64url_decode(parts[1]).decode("utf-8"))
-    except Exception:
-        return None
+# def jwt_payload(token: str) -> dict | None:
+#     try:
+#         parts = token.split(".")
+#         if len(parts) != 3:
+#             return None
+#         return json.loads(_b64url_decode(parts[1]).decode("utf-8"))
+#     except Exception:
+#         return None
 
-def bind_auth_from_session() -> tuple[bool, str | None]:
-    sess = st.session_state.get("session") or {}
-    at = sess.get("access_token")
-    rt = sess.get("refresh_token")
+# def bind_auth_from_session() -> tuple[bool, str | None]:
+#     sess = st.session_state.get("session") or {}
+#     at = sess.get("access_token")
+#     rt = sess.get("refresh_token")
     
-    if not at:
-        return (False, None)
+#     if not at:
+#         return (False, None)
     
-    payload = jwt_payload(at) or {}
-    exp = payload.get("exp", 0)
-    now = time.time()
-    needs_refresh = exp < (now + TOKEN_REFRESH_BUFFER_SECONDS)
+#     payload = jwt_payload(at) or {}
+#     exp = payload.get("exp", 0)
+#     now = time.time()
+#     needs_refresh = exp < (now + TOKEN_REFRESH_BUFFER_SECONDS)
     
-    if needs_refresh and rt:
-        try:
-            response = supabase.auth.refresh_session(rt)
-            if response and response.session:
-                new_at = response.session.access_token
-                new_rt = response.session.refresh_token
-                st.session_state.session = {"access_token": new_at, "refresh_token": new_rt}
-                at = new_at
-                rt = new_rt
-                if response.user:
-                    st.session_state.user = {
-                        "id": response.user.id,
-                        "email": response.user.email,
-                        "name": getattr(response.user, "user_metadata", {}).get("full_name") 
-                                or getattr(response.user, "user_metadata", {}).get("name")
-                                or response.user.email,
-                    }
-            else:
-                st.warning("⚠️ Session refresh returned no data. Please sign in again.")
-                return (False, None)
-        except Exception as e:
-            error_msg = str(e).lower()
-            if "expired" in error_msg or "invalid" in error_msg:
-                st.session_state.pop("session", None)
-                st.session_state.pop("user", None)
-                st.warning("⚠️ Session expired. Please sign in again.")
-                return (False, None)
+#     if needs_refresh and rt:
+#         try:
+#             response = supabase.auth.refresh_session(rt)
+#             if response and response.session:
+#                 new_at = response.session.access_token
+#                 new_rt = response.session.refresh_token
+#                 st.session_state.session = {"access_token": new_at, "refresh_token": new_rt}
+#                 at = new_at
+#                 rt = new_rt
+#                 if response.user:
+#                     st.session_state.user = {
+#                         "id": response.user.id,
+#                         "email": response.user.email,
+#                         "name": getattr(response.user, "user_metadata", {}).get("full_name") 
+#                                 or getattr(response.user, "user_metadata", {}).get("name")
+#                                 or response.user.email,
+#                     }
+#             else:
+#                 st.warning("⚠️ Session refresh returned no data. Please sign in again.")
+#                 return (False, None)
+#         except Exception as e:
+#             error_msg = str(e).lower()
+#             if "expired" in error_msg or "invalid" in error_msg:
+#                 st.session_state.pop("session", None)
+#                 st.session_state.pop("user", None)
+#                 st.warning("⚠️ Session expired. Please sign in again.")
+#                 return (False, None)
     
-    try:
-        try:
-            supabase.auth.set_session(at, rt)
-        except TypeError:
-            supabase.auth.set_session(access_token=at, refresh_token=rt)
-    except Exception:
-        pass
+#     try:
+#         try:
+#             supabase.auth.set_session(at, rt)
+#         except TypeError:
+#             supabase.auth.set_session(access_token=at, refresh_token=rt)
+#     except Exception:
+#         pass
     
-    try:
-        supabase.postgrest.auth(at)
-    except Exception:
-        pass
+#     try:
+#         supabase.postgrest.auth(at)
+#     except Exception:
+#         pass
     
-    uid = None
-    try:
-        me = supabase.auth.get_user()
-        au = getattr(me, "user", None) or me
-        uid = getattr(au, "id", None)
-    except Exception:
-        pass
+#     uid = None
+#     try:
+#         me = supabase.auth.get_user()
+#         au = getattr(me, "user", None) or me
+#         uid = getattr(au, "id", None)
+#     except Exception:
+#         pass
     
-    if not uid:
-        payload = jwt_payload(at) or {}
-        uid = payload.get("sub")
+#     if not uid:
+#         payload = jwt_payload(at) or {}
+#         uid = payload.get("sub")
     
-    if not uid and st.session_state.get("user"):
-        uid = st.session_state.user.get("id")
+#     if not uid and st.session_state.get("user"):
+#         uid = st.session_state.user.get("id")
     
-    return (bool(uid), uid)
+#     return (bool(uid), uid)
 
-BIND_OK, AUTH_UID = bind_auth_from_session()
-USER = st.session_state.get("user")
+# BIND_OK, AUTH_UID = bind_auth_from_session()
+# USER = st.session_state.get("user")
 
 # ── Validation DB functions ────────────────────────────────────────────────────
 def fetch_user_stance_validation(user_id: str, source_table: str, article_id: str) -> dict | None:

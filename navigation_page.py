@@ -1,17 +1,24 @@
 import streamlit as st
-from supabase import create_client, Client
 import base64
 import json
 import urllib.parse
 
 st.set_page_config(
-    page_title="Sign In - MigNar", 
-    layout="wide", 
+    page_title="Sign In - MigNar",
+    layout="wide",
     page_icon=".streamlit/static/MigNar_icon.png"
 )
 from lib.sidebar_style import apply_sidebar_names
 apply_sidebar_names()
 
+from lib.auth import (
+    get_supabase_client,
+    save_auth_to_storage,
+    clear_auth_from_storage,
+    restore_auth_from_storage,
+    sign_out,
+    cleanup_old_sessions,
+)
 
 # -----------------------------------------------------------------------------
 # Config
@@ -19,7 +26,10 @@ apply_sidebar_names()
 SB_URL = st.secrets["supabase"]["url"]
 SB_KEY = st.secrets["supabase"]["anon_key"]
 
-supabase: Client = create_client(SB_URL, SB_KEY)
+supabase = get_supabase_client()
+
+# Clean up old session files periodically
+cleanup_old_sessions()
 
 # -----------------------------------------------------------------------------
 # Get the correct redirect URL based on environment
@@ -36,15 +46,22 @@ REDIRECT_URL = get_redirect_url()
 # -----------------------------------------------------------------------------
 if "user" not in st.session_state:
     st.session_state.user = None
-    
+
 if "session" not in st.session_state:
     st.session_state.session = None
-    
+
 if "auth_processed" not in st.session_state:
     st.session_state.auth_processed = False
 
 if "show_signup" not in st.session_state:
     st.session_state.show_signup = False
+
+# -----------------------------------------------------------------------------
+# Restore auth from server-side session (survives refresh via cookie)
+# -----------------------------------------------------------------------------
+if not st.session_state.user:
+    if restore_auth_from_storage():
+        st.session_state.auth_processed = True
 
 # -----------------------------------------------------------------------------
 # Helper to decode JWT
@@ -73,32 +90,36 @@ if access_token and not st.session_state.auth_processed:
     with st.spinner("🔄 Processing login..."):
         try:
             payload = decode_jwt(access_token)
-            
+
             if payload and payload.get("email"):
                 user_metadata = payload.get("user_metadata", {})
                 app_metadata = payload.get("app_metadata", {})
-                
-                # Get provider info
+
                 provider = app_metadata.get("provider", "email")
-                
-                st.session_state.user = {
+
+                user_data = {
                     "id": payload.get("sub"),
                     "email": payload.get("email"),
                     "name": user_metadata.get("full_name") or user_metadata.get("name") or user_metadata.get("user_name") or payload.get("email"),
                     "avatar_url": user_metadata.get("avatar_url") or user_metadata.get("picture"),
                     "provider": provider,
                 }
+
+                st.session_state.user = user_data
                 st.session_state.session = {
                     "access_token": access_token,
                     "refresh_token": refresh_token,
                 }
                 st.session_state.auth_processed = True
-                
-                # Clean URL
+
+                # Save to server-side session (sets ?sid= in URL)
+                save_auth_to_storage(access_token, refresh_token, user_data)
+
+                # Clean OAuth params from URL (keep sid)
                 del st.query_params["access_token"]
                 if "refresh_token" in st.query_params:
                     del st.query_params["refresh_token"]
-                
+
                 st.success("✅ Login successful!")
                 st.rerun()
             else:
@@ -114,11 +135,10 @@ if access_token and not st.session_state.auth_processed:
 user = st.session_state.user
 
 if user:
-    # Logged in state
     st.title("🔐 Welcome!")
-    
+
     col1, col2 = st.columns([1, 5])
-    
+
     with col1:
         avatar_url = user.get("avatar_url")
         if avatar_url:
@@ -128,72 +148,64 @@ if user:
                 st.markdown("# 👤")
         else:
             st.markdown("# 👤")
-    
+
     with col2:
         st.markdown(f"### {user['name']}")
         st.markdown(f"📧 {user['email']}")
-        
-        # Show provider badge
+
         provider = user.get("provider", "email")
         provider_emoji = {"google": "🔵", "github": "⚫", "email": "📧"}.get(provider, "🔐")
         st.markdown(f"**Signed in with:** {provider_emoji} {provider.title()}")
-    
+
     st.divider()
-    
-    # Action buttons
+
     col_a, col_b, col_c = st.columns([2, 2, 6])
-    
+
     with col_a:
-        if st.button("🚪 Sign Out", width="stretch"):
+        if st.button("🚪 Sign Out", use_container_width=True):
             try:
                 supabase.auth.sign_out()
             except:
                 pass
-            st.session_state.user = None
-            st.session_state.session = None
-            st.session_state.auth_processed = False
+            sign_out()
             st.rerun()
-    
+
     with col_b:
         with st.expander("🔍 Session Info"):
             st.json(st.session_state.session)
 
 else:
-    # Not logged in state
     st.title("🔐 Sign In")
     st.markdown("### Welcome! Please sign in to continue")
-    
+
     st.divider()
-    
-    # Tabs for different auth methods
+
     tab1, tab2 = st.tabs(["📧 Email", "🌐 Social Login (under development, use email for now)"])
-    
+
     with tab1:
-        # Email/Password Authentication
         st.subheader("Sign in with Email")
-        
-        # Toggle between Sign In and Sign Up
+
         auth_mode = st.radio(
             "Select mode:",
             ["Sign In", "Sign Up"],
             horizontal=True,
             label_visibility="collapsed"
         )
-        
+
         with st.form("email_auth_form"):
             email = st.text_input("Email", placeholder="your@email.com")
             password = st.text_input("Password", type="password", placeholder="••••••••")
-            
+
             if auth_mode == "Sign Up":
                 password_confirm = st.text_input("Confirm Password", type="password", placeholder="••••••••")
                 full_name = st.text_input("Full Name (optional)", placeholder="John Doe")
-            
+
             submitted = st.form_submit_button(
                 f"{'Create Account' if auth_mode == 'Sign Up' else 'Sign In'}",
-                width="stretch",
+                use_container_width=True,
                 type="primary"
             )
-            
+
             if submitted:
                 if not email or not password:
                     st.error("❌ Please fill in all required fields")
@@ -204,7 +216,6 @@ else:
                 else:
                     try:
                         if auth_mode == "Sign Up":
-                            # Sign up new user
                             with st.spinner("Creating account..."):
                                 response = supabase.auth.sign_up({
                                     "email": email,
@@ -215,51 +226,61 @@ else:
                                         }
                                     }
                                 })
-                                
+
                                 if response.user:
                                     st.success("✅ Account created successfully!")
                                     st.info("🔒 Please check your email to confirm your account (if email confirmation is enabled)")
-                                    
-                                    # Auto sign-in if email confirmation is disabled
+
                                     if response.session:
-                                        st.session_state.user = {
+                                        user_data = {
                                             "id": response.user.id,
                                             "email": response.user.email,
                                             "name": full_name if full_name else email.split("@")[0],
                                             "avatar_url": None,
                                             "provider": "email",
                                         }
+                                        st.session_state.user = user_data
                                         st.session_state.session = {
                                             "access_token": response.session.access_token,
                                             "refresh_token": response.session.refresh_token,
                                         }
                                         st.session_state.auth_processed = True
+                                        save_auth_to_storage(
+                                            response.session.access_token,
+                                            response.session.refresh_token,
+                                            user_data
+                                        )
                                         st.rerun()
                                 else:
                                     st.error("❌ Failed to create account")
                         else:
-                            # Sign in existing user
                             with st.spinner("Signing in..."):
                                 response = supabase.auth.sign_in_with_password({
                                     "email": email,
                                     "password": password
                                 })
-                                
+
                                 if response.user and response.session:
                                     user_metadata = response.user.user_metadata or {}
-                                    
-                                    st.session_state.user = {
+
+                                    user_data = {
                                         "id": response.user.id,
                                         "email": response.user.email,
                                         "name": user_metadata.get("full_name", email.split("@")[0]),
                                         "avatar_url": user_metadata.get("avatar_url"),
                                         "provider": "email",
                                     }
+                                    st.session_state.user = user_data
                                     st.session_state.session = {
                                         "access_token": response.session.access_token,
                                         "refresh_token": response.session.refresh_token,
                                     }
                                     st.session_state.auth_processed = True
+                                    save_auth_to_storage(
+                                        response.session.access_token,
+                                        response.session.refresh_token,
+                                        user_data
+                                    )
                                     st.success("✅ Login successful!")
                                     st.rerun()
                                 else:
@@ -272,8 +293,7 @@ else:
                             st.error("❌ Email already registered. Please sign in instead.")
                         else:
                             st.error(f"❌ Authentication failed: {error_msg}")
-        
-        # Password reset option
+
         if auth_mode == "Sign In":
             with st.expander("🔑 Forgot Password?"):
                 reset_email = st.text_input("Enter your email:", placeholder="your@email.com", key="reset_email")
@@ -286,12 +306,10 @@ else:
                             st.error(f"❌ Failed to send reset link: {e}")
                     else:
                         st.warning("⚠️ Please enter your email")
-    
+
     with tab2:
-        # OAuth Authentication
         st.subheader("Sign in with Social Account")
-        
-        # Build OAuth URLs
+
         def get_oauth_url(provider: str) -> str:
             authorize_url = f"{SB_URL}/auth/v1/authorize"
             params = {
@@ -300,12 +318,12 @@ else:
                 "flow_type": "implicit"
             }
             return f"{authorize_url}?{urllib.parse.urlencode(params)}"
-        
+
         google_oauth_url = get_oauth_url("google")
         github_oauth_url = get_oauth_url("github")
-        
+
         col1, col2 = st.columns(2)
-        
+
         with col1:
             st.markdown(f"""
             <a href="{google_oauth_url}" target="_self">
@@ -333,7 +351,7 @@ else:
                 </button>
             </a>
             """, unsafe_allow_html=True)
-        
+
         with col2:
             st.markdown(f"""
             <a href="{github_oauth_url}" target="_self">
@@ -361,10 +379,9 @@ else:
                 </button>
             </a>
             """, unsafe_allow_html=True)
-        
+
         st.divider()
-        
-        # Manual OAuth fallback
+
         with st.expander("🔧 Manual Social Login"):
             st.warning("""
             **If the buttons above don't work**, use this manual method:
@@ -373,13 +390,13 @@ else:
             2. After signing in, **copy the complete URL** from your browser
             3. Paste it in the text box below
             """)
-            
+
             col1, col2 = st.columns(2)
             with col1:
                 st.markdown(f"[Open Google →]({google_oauth_url})")
             with col2:
                 st.markdown(f"[Open GitHub →]({github_oauth_url})")
-            
+
             manual_url = st.text_input(
                 "Paste the redirect URL here:",
                 placeholder=f"{REDIRECT_URL}/#access_token=eyJhbGc...",
@@ -393,12 +410,12 @@ else:
                     try:
                         hash_part = manual_url.split("#")[1]
                         hash_params = dict(urllib.parse.parse_qsl(hash_part))
-                        
+
                         if "access_token" in hash_params:
                             new_url = f"{REDIRECT_URL}?access_token={hash_params['access_token']}"
                             if "refresh_token" in hash_params:
                                 new_url += f"&refresh_token={hash_params['refresh_token']}"
-                            
+
                             st.success("✅ Token extracted successfully! Redirecting...")
                             st.markdown(f'<meta http-equiv="refresh" content="0;url={new_url}">', unsafe_allow_html=True)
                             st.info(f"If you're not redirected, [click here]({new_url})")
@@ -406,22 +423,3 @@ else:
                         st.error(f"❌ Error: {e}")
                 else:
                     st.warning("⚠️ Please sign in first using one of the links above.")
-
-    # # Debug section
-    # with st.expander("🛠️ Developer Info"):
-    #     st.write("**Redirect URL:**", REDIRECT_URL)
-    #     st.write("**Query Params:**", dict(st.query_params))
-    #     st.write("**Session State:**")
-    #     st.json({
-    #         "user": st.session_state.user,
-    #         "auth_processed": st.session_state.auth_processed,
-    #         "has_session": st.session_state.session is not None
-    #     })
-        
-    #     if st.button("🗑️ Clear All Session Data"):
-    #         st.session_state.user = None
-    #         st.session_state.session = None
-    #         st.session_state.auth_processed = False
-    #         for key in list(st.query_params.keys()):
-    #             del st.query_params[key]
-    #         st.rerun()

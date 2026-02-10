@@ -6,3 +6,4 @@ matplotlib
 psycopg[binary]
 python-dotenv
 supabase
+extra-streamlit-components
