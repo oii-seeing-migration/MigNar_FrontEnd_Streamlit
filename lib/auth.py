@@ -103,32 +103,40 @@ def _set_cookie_sid(sid: str):
     """Set session ID cookie (7 days) in parent document."""
     import streamlit.components.v1 as components
 
+    # We aggressively try to store the SID in every possible storage location:
+    # 1. The Component's LocalStorage (Reliable on Cloud/Sandboxed)
+    # 2. The Parent's LocalStorage (Reliable on Localhost/Same-Origin)
+    # 3. Cookies (Best effort)
     js = f"""
     <script>
     (function() {{
-      var isHttps = window.location && window.location.protocol === "https:";
-      var sameSite = isHttps ? "None" : "Lax";
-      var secure = isHttps ? "; Secure" : "";
-      var cookie = "{COOKIE_NAME}={sid}; path=/; max-age={7*86400}; SameSite=" + sameSite + secure;
-
-      // 1. Write to Iframe Storage (Primary for Cloud)
+      var sid = "{sid}";
+      var cookieName = "{COOKIE_NAME}";
+      
+      // 1. Iframe Storage (Critical for Cloud)
       try {{
-        window.localStorage.setItem("{COOKIE_NAME}", "{sid}");
+        window.localStorage.setItem(cookieName, sid);
       }} catch (e) {{}}
 
-      // 2. Write to Parent Storage (Primary for Global Access)
+      // 2. Parent Storage (Critical for Localhost/Same-Origin)
       try {{
         if (window.parent && window.parent.localStorage) {{
-             window.parent.localStorage.setItem("{COOKIE_NAME}", "{sid}");
+             window.parent.localStorage.setItem(cookieName, sid);
         }}
       }} catch (e) {{}}
 
-      // 3. Write Cookies
-      if (window.parent && window.parent.document) {{
-        try {{ window.parent.document.cookie = cookie; }} catch(e) {{}}
-      }} else {{
-        document.cookie = cookie;
-      }}
+      // 3. Cookies
+      var isHttps = window.location.protocol === "https:";
+      var sameSite = isHttps ? "None" : "Lax";
+      var secure = isHttps ? "; Secure" : "";
+      var cookieVal = cookieName + "=" + sid + "; path=/; max-age={7*86400}; SameSite=" + sameSite + secure;
+      
+      try {{ document.cookie = cookieVal; }} catch(e) {{}}
+      try {{ 
+          if (window.parent && window.parent.document) {{
+              window.parent.document.cookie = cookieVal;
+          }}
+      }} catch(e) {{}}
     }})();
     </script>
     """
@@ -209,57 +217,74 @@ def _clear_url_sid():
 
 def _inject_sid_from_local_storage():
     import streamlit.components.v1 as components
-
+    
+    # Logic:
+    # 1. Check Iframe Storage (Cloud persistence)
+    # 2. Check Parent Storage (Localhost persistence)
+    # 3. If found, determine Parent URL (document.referrer or window.parent.location)
+    # 4. Redirect Target to Target?sid=SID
+    
     js = f"""
     <script>
     (function() {{
-      try {{
-        // 1. Try to recover SID from Iframe LocalStorage (most reliable in cross-origin)
-        var storage = window.localStorage; 
-        var sid = storage ? storage.getItem("{COOKIE_NAME}") : null;
-        
-        // If not in iframe storage, try parent (if same-origin)
-        if (!sid) {{
-            try {{
-                if (window.parent && window.parent.localStorage) {{
-                    sid = window.parent.localStorage.getItem("{COOKIE_NAME}");
-                }}
-            }} catch(e) {{}}
-        }}
-
-        if (!sid) return;
-        
-        // 2. Determine the Target URL
-        var targetUrl = null;
-        try {{
-             targetUrl = window.parent.location.href;
-        }} catch(e) {{
-             // Blocked. Try Referrer.
-             targetUrl = document.referrer;
-             
-             // If Referrer is empty (New Tab), try ancestorOrigins (Chrome/Edge/Safari)
-             if (!targetUrl && window.location.ancestorOrigins && window.location.ancestorOrigins.length > 0) {{
-                targetUrl = window.location.ancestorOrigins[0];
-             }}
-        }}
-
-        if (!targetUrl) {{
-            console.warn("MigNar Auth: Found SID but cannot determine parent URL to redirect.");
-            return;
-        }}
-
-        // 3. Append SID and Redirect
-        try {{
-            var url = new URL(targetUrl);
-            if (!url.searchParams.get("sid")) {{
-              url.searchParams.set("sid", sid);
-              var targetWindow = window.top || window.parent || window;
-              targetWindow.location.replace(url.toString());
+      var cookieName = "{COOKIE_NAME}";
+      var sid = null;
+      
+      // 1. Try Iframe Storage
+      try {{ sid = window.localStorage.getItem(cookieName); }} catch(e) {{}}
+      
+      // 2. Try Parent Storage
+      if (!sid) {{
+          try {{
+            if (window.parent && window.parent.localStorage) {{
+                sid = window.parent.localStorage.getItem(cookieName);
             }}
-        }} catch(e) {{
-            console.error("MigNar Auth: Redirect failed", e);
-        }}
-      }} catch (e) {{}}
+          }} catch(e) {{}}
+      }}
+      
+      if (!sid) return;
+      
+      // 3. Determine Search Target params
+      // We need to check if the TOP window already has SID.
+      // Cross-origin read of window.top.location.search might fail.
+      var alreadyHasSid = false;
+      try {{
+          var params = new URLSearchParams(window.top.location.search);
+          if (params.get("sid")) alreadyHasSid = true;
+      }} catch(e) {{
+          // Cross-origin: check referrer if available
+          if (document.referrer && document.referrer.indexOf("sid=") !== -1) alreadyHasSid = true;
+      }}
+      
+      if (alreadyHasSid) return;
+      
+      // 4. Determine Target URL Base
+      var targetUrl = "";
+      
+      // Try standard Referrer (Works for Iframe in Cloud)
+      if (document.referrer) {{
+          targetUrl = document.referrer;
+      }} 
+      else {{
+          // Try Parent Location (Works for Localhost)
+          try {{ targetUrl = window.parent.location.href; }} catch(e) {{}}
+      }}
+      
+      if (!targetUrl) return;
+
+      // 5. Redirect
+      try {{
+          var url = new URL(targetUrl);
+          // Only redirect if sid param is missing
+          if (!url.searchParams.get("sid")) {{
+              url.searchParams.set("sid", sid);
+              
+              // Force top window redirect
+              window.top.location.href = url.toString();
+          }}
+      }} catch(e) {{
+          console.log("Auto-login redirect failed: ", e);
+      }}
     }})();
     </script>
     """
