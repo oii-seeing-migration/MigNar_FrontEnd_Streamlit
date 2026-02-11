@@ -4,29 +4,45 @@ import hashlib
 import json
 import os
 import time
+from datetime import datetime, timezone, timedelta
 import streamlit as st
 from supabase import create_client, Client
 
 TOKEN_REFRESH_BUFFER_SECONDS = 600
 
-# Server-side session directory
+# Server-side session directory (local fallback)
 SESSION_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".sessions")
 os.makedirs(SESSION_DIR, exist_ok=True)
 
 # Cookie name used for session ID
 COOKIE_NAME = "mignar_sid"
 
-# ─── Server-side session persistence ─────────────────────────────────────────
+# Shared session storage (Supabase)
+SESSION_TABLE = "app_sessions"
+SESSION_TTL_DAYS = 7
+
+
+def _now_ts() -> float:
+    return time.time()
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+# ─── Local session persistence ──────────────────────────────────────────────
 
 def _session_file(sid: str) -> str:
     """Get path to a session file. Sanitize sid to prevent path traversal."""
     safe = "".join(c for c in sid if c.isalnum() or c == "-")
     return os.path.join(SESSION_DIR, f"{safe}.json")
 
+
 def _write_session(sid: str, data: dict):
-    data["_ts"] = time.time()
+    data["_ts"] = _now_ts()
     with open(_session_file(sid), "w") as f:
         json.dump(data, f)
+
 
 def _read_session(sid: str) -> dict | None:
     path = _session_file(sid)
@@ -35,12 +51,13 @@ def _read_session(sid: str) -> dict | None:
     try:
         with open(path, "r") as f:
             data = json.load(f)
-        if time.time() - data.get("_ts", 0) > 7 * 86400:
+        if _now_ts() - data.get("_ts", 0) > SESSION_TTL_DAYS * 86400:
             os.remove(path)
             return None
         return data
     except Exception:
         return None
+
 
 def _delete_session(sid: str):
     path = _session_file(sid)
@@ -50,19 +67,8 @@ def _delete_session(sid: str):
         except Exception:
             pass
 
-def cleanup_old_sessions(max_age_days: int = 7):
-    try:
-        cutoff = time.time() - max_age_days * 86400
-        for f in os.listdir(SESSION_DIR):
-            fp = os.path.join(SESSION_DIR, f)
-            if os.path.isfile(fp) and os.path.getmtime(fp) < cutoff:
-                os.remove(fp)
-    except Exception:
-        pass
 
-# ─── Cookie-based session ID (extra-streamlit-components) ────────────────────
-
-# ─── Cookie-based session ID (parent document) ───────────────────────────────
+# ─── Cookie-based session ID ────────────────────────────────────────────────
 
 def _get_cookie_manager():
     if "_cookie_manager" not in st.session_state:
@@ -73,9 +79,9 @@ def _get_cookie_manager():
         st.session_state["_cookie_manager"] = stx.CookieManager()
     return st.session_state["_cookie_manager"]
 
+
 def _get_cookie_sid() -> str | None:
     """Read session ID from browser cookie."""
-    # Prefer server-side cookies if available (Streamlit >= 1.37)
     try:
         cookies = st.context.cookies
         val = cookies.get(COOKIE_NAME)
@@ -84,7 +90,6 @@ def _get_cookie_sid() -> str | None:
     except Exception:
         pass
 
-    # Fallback to CookieManager (if available)
     mgr = _get_cookie_manager()
     if not mgr:
         return None
@@ -92,6 +97,7 @@ def _get_cookie_sid() -> str | None:
         return mgr.get(COOKIE_NAME)
     except Exception:
         return None
+
 
 def _set_cookie_sid(sid: str):
     """Set session ID cookie (7 days) in parent document."""
@@ -108,13 +114,13 @@ def _set_cookie_sid(sid: str):
     """
     components.html(js, height=0, width=0)
 
-    # Optional fallback for environments where CookieManager works
     mgr = _get_cookie_manager()
     if mgr:
         try:
             mgr.set(COOKIE_NAME, sid, max_age=7 * 86400, path="/", same_site="Lax")
         except Exception:
             pass
+
 
 def _clear_cookie_sid():
     """Clear session ID cookie."""
@@ -138,6 +144,7 @@ def _clear_cookie_sid():
         except Exception:
             pass
 
+
 def _get_url_sid() -> str | None:
     try:
         val = st.query_params.get("sid")
@@ -147,11 +154,13 @@ def _get_url_sid() -> str | None:
         return val[0] if val else None
     return val if isinstance(val, str) else None
 
+
 def _set_url_sid(sid: str):
     try:
         st.query_params["sid"] = sid
     except Exception:
         pass
+
 
 def _clear_url_sid():
     try:
@@ -161,7 +170,7 @@ def _clear_url_sid():
         pass
 
 
-# ─── Supabase client ─────────────────────────────────────────────────────────
+# ─── Supabase client ────────────────────────────────────────────────────────
 
 def get_supabase_client() -> Client:
     if "supabase_client" not in st.session_state:
@@ -170,11 +179,13 @@ def get_supabase_client() -> Client:
         st.session_state.supabase_client = create_client(SB_URL, SB_KEY)
     return st.session_state.supabase_client
 
-# ─── JWT helpers ──────────────────────────────────────────────────────────────
+
+# ─── JWT helpers ─────────────────────────────────────────────────────────────
 
 def _b64url_decode(s: str) -> bytes:
     s += "=" * ((4 - len(s) % 4) % 4)
     return base64.urlsafe_b64decode(s)
+
 
 def jwt_payload(token: str) -> dict | None:
     try:
@@ -185,73 +196,136 @@ def jwt_payload(token: str) -> dict | None:
     except Exception:
         return None
 
-# ─── Auth persistence ─────────────────────────────────────────────────────────
 
-def save_auth_to_storage(access_token: str, refresh_token: str, user: dict):
-    """Save auth tokens. Creates server-side file + sets browser cookie with session ID."""
-    # Deterministic session ID from user ID for simplicity
-    uid = user.get("id", "unknown")
-    sid = hashlib.sha256(uid.encode()).hexdigest()[:32]
-    
-    _write_session(sid, {
+# ─── Shared session persistence ──────────────────────────────────────────────
+
+def _write_session_shared(sid: str, data: dict) -> bool:
+    data = dict(data)
+    data["_ts"] = _now_ts()
+    payload = {
+        "sid": sid,
+        "data": data,
+        "updated_at": _now_iso(),
+    }
+    try:
+        supabase = get_supabase_client()
+        supabase.table(SESSION_TABLE).upsert(payload, on_conflict="sid").execute()
+        return True
+    except Exception:
+        return False
+
+
+def _read_session_shared(sid: str) -> dict | None:
+    try:
+        supabase = get_supabase_client()
+        res = supabase.table(SESSION_TABLE).select("data").eq("sid", sid).limit(1).execute()
+        row = res.data[0] if getattr(res, "data", None) else None
+        if not row:
+            return None
+        data = row.get("data") or {}
+        ts = data.get("_ts", 0)
+        if ts and _now_ts() - ts > SESSION_TTL_DAYS * 86400:
+            _delete_session_shared(sid)
+            return None
+        return data
+    except Exception:
+        return None
+
+
+def _delete_session_shared(sid: str):
+    try:
+        supabase = get_supabase_client()
+        supabase.table(SESSION_TABLE).delete().eq("sid", sid).execute()
+    except Exception:
+        pass
+
+
+def _persist_session(sid: str, access_token: str, refresh_token: str, user: dict):
+    payload = {
         "access_token": access_token,
         "refresh_token": refresh_token,
         "user": user,
-    })
-    
-    # Store sid in session_state for cross-page navigation within same WS session
+    }
+    _write_session_shared(sid, payload)
+    _write_session(sid, payload)
+
+
+def cleanup_old_sessions(max_age_days: int = SESSION_TTL_DAYS):
+    try:
+        cutoff = _now_ts() - max_age_days * 86400
+        for f in os.listdir(SESSION_DIR):
+            fp = os.path.join(SESSION_DIR, f)
+            if os.path.isfile(fp) and os.path.getmtime(fp) < cutoff:
+                os.remove(fp)
+    except Exception:
+        pass
+    try:
+        supabase = get_supabase_client()
+        cutoff_iso = (datetime.now(timezone.utc) - timedelta(days=max_age_days)).isoformat()
+        supabase.table(SESSION_TABLE).delete().lt("updated_at", cutoff_iso).execute()
+    except Exception:
+        pass
+
+
+# ─── Auth persistence ────────────────────────────────────────────────────────
+
+def save_auth_to_storage(access_token: str, refresh_token: str, user: dict):
+    """Save auth tokens. Creates shared session + local fallback + cookie."""
+    uid = user.get("id", "unknown")
+    sid = hashlib.sha256(uid.encode()).hexdigest()[:32]
+
+    _persist_session(sid, access_token, refresh_token, user)
+
     st.session_state["_auth_sid"] = sid
-    
-    # Set browser cookie for persistence across refresh/new WS sessions
     _set_cookie_sid(sid)
     _set_url_sid(sid)
 
+
 def clear_auth_from_storage():
-    """Clear server-side session + cookie."""
+    """Clear shared session + local fallback + cookie."""
     sid = st.session_state.get("_auth_sid") or _get_cookie_sid() or _get_url_sid()
     if sid:
+        _delete_session_shared(sid)
         _delete_session(sid)
     st.session_state.pop("_auth_sid", None)
     _clear_cookie_sid()
     _clear_url_sid()
 
+
 def restore_auth_from_storage() -> bool:
     """
     Try to restore auth. Checks:
-    1. session_state (fastest, works within same WS session)
-    2. Browser cookie → server-side file (works after refresh)
+    1. session_state
+    2. shared session
+    3. local fallback
     """
     if st.session_state.get("session") and st.session_state.get("user"):
         return False
-    
-    # Get session ID: first from session_state, then from cookie
+
     sid = st.session_state.get("_auth_sid") or _get_cookie_sid() or _get_url_sid()
     if not sid:
         return False
-    
-    stored = _read_session(sid)
+
+    stored = _read_session_shared(sid) or _read_session(sid)
     if not stored:
         return False
-    
+
     at = stored.get("access_token")
     rt = stored.get("refresh_token")
     user = stored.get("user")
-    
+
     if not at or not user:
         return False
-    
+
     payload = jwt_payload(at) or {}
     exp = payload.get("exp", 0)
-    now = time.time()
-    
+    now = _now_ts()
+
     if exp > now:
         st.session_state.session = {"access_token": at, "refresh_token": rt}
         st.session_state.user = user
         st.session_state["_auth_sid"] = sid
-        if _get_cookie_sid() and _get_url_sid() == sid:
-            _clear_url_sid()
-        else:
-            _set_url_sid(sid)
+        _set_url_sid(sid)
         return True
     elif rt:
         try:
@@ -272,39 +346,34 @@ def restore_auth_from_storage() -> bool:
                 else:
                     st.session_state.user = user
                 st.session_state["_auth_sid"] = sid
-                _write_session(sid, {
-                    "access_token": new_at,
-                    "refresh_token": new_rt,
-                    "user": st.session_state.user,
-                })
-                if _get_cookie_sid() and _get_url_sid() == sid:
-                    _clear_url_sid()
-                else:
-                    _set_url_sid(sid)
+                _persist_session(sid, new_at, new_rt, st.session_state.user)
+                _set_url_sid(sid)
                 return True
         except Exception:
+            _delete_session_shared(sid)
             _delete_session(sid)
             _clear_cookie_sid()
-    
+
     return False
+
 
 # ─── Bind auth to Supabase client ────────────────────────────────────────────
 
 def bind_auth_from_session() -> tuple[bool, str | None, Client]:
     supabase = get_supabase_client()
-    
+
     sess = st.session_state.get("session") or {}
     at = sess.get("access_token")
     rt = sess.get("refresh_token")
-    
+
     if not at:
         return (False, None, supabase)
-    
+
     payload = jwt_payload(at) or {}
     exp = payload.get("exp", 0)
-    now = time.time()
+    now = _now_ts()
     needs_refresh = exp < (now + TOKEN_REFRESH_BUFFER_SECONDS)
-    
+
     if needs_refresh and rt:
         try:
             response = supabase.auth.refresh_session(rt)
@@ -322,14 +391,9 @@ def bind_auth_from_session() -> tuple[bool, str | None, Client]:
                                 or getattr(response.user, "user_metadata", {}).get("name")
                                 or response.user.email,
                     }
-                # Update server-side session too
                 sid = st.session_state.get("_auth_sid")
                 if sid:
-                    _write_session(sid, {
-                        "access_token": new_at,
-                        "refresh_token": new_rt,
-                        "user": st.session_state.user,
-                    })
+                    _persist_session(sid, new_at, new_rt, st.session_state.user)
             else:
                 return (False, None, supabase)
         except Exception as e:
@@ -339,7 +403,7 @@ def bind_auth_from_session() -> tuple[bool, str | None, Client]:
                 st.session_state.pop("user", None)
                 clear_auth_from_storage()
                 return (False, None, supabase)
-    
+
     try:
         try:
             supabase.auth.set_session(at, rt)
@@ -347,12 +411,12 @@ def bind_auth_from_session() -> tuple[bool, str | None, Client]:
             supabase.auth.set_session(access_token=at, refresh_token=rt)
     except Exception:
         pass
-    
+
     try:
         supabase.postgrest.auth(at)
     except Exception:
         pass
-    
+
     uid = None
     if st.session_state.get("user"):
         uid = st.session_state.user.get("id")
@@ -366,16 +430,24 @@ def bind_auth_from_session() -> tuple[bool, str | None, Client]:
             uid = getattr(au, "id", None)
         except Exception:
             pass
-    
+
     return (bool(uid), uid, supabase)
 
-# ─── Public API ───────────────────────────────────────────────────────────────
+
+# ─── Public API ──────────────────────────────────────────────────────────────
 
 def get_auth_debug_state() -> dict:
     sid_cookie = _get_cookie_sid()
     sid_state = st.session_state.get("_auth_sid")
     sid_url = _get_url_sid()
     sid = sid_state or sid_cookie or sid_url
+
+    shared = _read_session_shared(sid) if sid else None
+    shared_user = (shared or {}).get("user") or {}
+    shared_at = (shared or {}).get("access_token")
+    shared_exp = None
+    if shared_at:
+        shared_exp = (jwt_payload(shared_at) or {}).get("exp")
 
     stored = _read_session(sid) if sid else None
     stored_user = (stored or {}).get("user") or {}
@@ -396,6 +468,11 @@ def get_auth_debug_state() -> dict:
         "url_sid": sid_url,
         "session_sid": sid_state,
         "active_sid": sid,
+        "session_shared_exists": bool(shared),
+        "session_shared_ts": (shared or {}).get("_ts"),
+        "shared_user_id": shared_user.get("id"),
+        "shared_has_access_token": bool(shared_at),
+        "shared_access_exp": shared_exp,
         "session_file_exists": bool(sid and os.path.exists(_session_file(sid))),
         "session_file_ts": (stored or {}).get("_ts"),
         "stored_user_id": stored_user.get("id"),
@@ -410,12 +487,14 @@ def get_auth_debug_state() -> dict:
 def get_current_user() -> dict | None:
     return st.session_state.get("user")
 
+
 def require_auth() -> tuple[bool, str | None, dict | None, Client]:
     """Restore session, bind auth, return state."""
     restore_auth_from_storage()
     bind_ok, auth_uid, supabase = bind_auth_from_session()
     user = get_current_user()
     return (bind_ok and bool(auth_uid), auth_uid, user, supabase)
+
 
 def sign_out():
     """Sign out and clear all state."""
