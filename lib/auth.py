@@ -228,6 +228,73 @@ def _inject_sid_from_local_storage():
     """
     components.html(js, height=0, width=0)
 
+def _inject_sid_into_links(sid: str):
+    if not sid or st.session_state.get("_sid_links_injected") == sid:
+        return
+
+    import streamlit.components.v1 as components
+
+    js = f"""
+    <script>
+    (function() {{
+      var sid = "{sid}";
+      if (!sid) return;
+
+      function appendSid(href) {{
+        try {{
+          var url = new URL(href, window.location.origin);
+          if (!url.searchParams.get("sid")) {{
+            url.searchParams.set("sid", sid);
+          }}
+          return url.toString();
+        }} catch (e) {{
+          return href;
+        }}
+      }}
+
+      function updateLinks(root) {{
+        var anchors = root.querySelectorAll('a[href]');
+        for (var i = 0; i < anchors.length; i++) {{
+          var a = anchors[i];
+          var href = a.getAttribute("href");
+          if (!href) continue;
+
+          if (href.startsWith("http://") || href.startsWith("https://")) {{
+            if (!href.startsWith(window.location.origin)) continue;
+          }} else if (!href.startsWith("/")) {{
+            continue;
+          }}
+
+          a.href = appendSid(a.href);
+        }}
+      }}
+
+      function attach(root) {{
+        updateLinks(root);
+        var obs = new MutationObserver(function() {{ updateLinks(root); }});
+        obs.observe(root, {{
+          subtree: true,
+          childList: true,
+          attributes: true,
+          attributeFilter: ["href"]
+        }});
+      }}
+
+      try {{
+        if (window.parent && window.parent.document &&
+            window.parent.location && window.parent.location.origin === window.location.origin) {{
+          attach(window.parent.document);
+        }} else {{
+          attach(document);
+        }}
+      }} catch (e) {{
+        try {{ attach(document); }} catch (e2) {{}}
+      }}
+    }})();
+    </script>
+    """
+    components.html(js, height=0, width=0)
+    st.session_state["_sid_links_injected"] = sid
 
 def _ensure_sid_from_state() -> str | None:
     sid = st.session_state.get("_auth_sid")
@@ -510,7 +577,10 @@ def bind_auth_from_session() -> tuple[bool, str | None, Client]:
 # ─── Public API ──────────────────────────────────────────────────────────────
 def ensure_sid() -> str | None:
     """Ensure sid is present in URL and cookie."""
-    return _ensure_sid_from_state()
+    sid = _ensure_sid_from_state()
+    if sid:
+        _inject_sid_into_links(sid)
+    return sid
 
 def get_auth_debug_state() -> dict:
     sid_cookie = _get_cookie_sid()
