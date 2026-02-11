@@ -111,16 +111,21 @@ def _set_cookie_sid(sid: str):
       var secure = isHttps ? "; Secure" : "";
       var cookie = "{COOKIE_NAME}={sid}; path=/; max-age={7*86400}; SameSite=" + sameSite + secure;
 
-      var storage = null;
+      // 1. Write to Iframe Storage (Primary for Cloud)
       try {{
-        storage = (window.parent && window.parent.localStorage) ? window.parent.localStorage : window.localStorage;
-      }} catch (e) {{
-        try {{ storage = window.localStorage; }} catch (e2) {{ storage = null; }}
-      }}
-      try {{ if (storage) storage.setItem("{COOKIE_NAME}", "{sid}"); }} catch (e) {{}}
+        window.localStorage.setItem("{COOKIE_NAME}", "{sid}");
+      }} catch (e) {{}}
 
+      // 2. Write to Parent Storage (Primary for Global Access)
+      try {{
+        if (window.parent && window.parent.localStorage) {{
+             window.parent.localStorage.setItem("{COOKIE_NAME}", "{sid}");
+        }}
+      }} catch (e) {{}}
+
+      // 3. Write Cookies
       if (window.parent && window.parent.document) {{
-        window.parent.document.cookie = cookie;
+        try {{ window.parent.document.cookie = cookie; }} catch(e) {{}}
       }} else {{
         document.cookie = cookie;
       }}
@@ -205,48 +210,54 @@ def _clear_url_sid():
 def _inject_sid_from_local_storage():
     import streamlit.components.v1 as components
 
-    # This script runs in an iframe. We need to:
-    # 1. Read the SID from localStorage (parent or fallback)
-    # 2. Redirect the MAIN window (parent/top) to include the SID
     js = f"""
     <script>
     (function() {{
       try {{
-        // 1. Try to recover SID from LocalStorage
-        var storage = null;
-        try {{
-          storage = (window.parent && window.parent.localStorage) ? window.parent.localStorage : window.localStorage;
-        }} catch (e) {{
-          try {{ storage = window.localStorage; }} catch (e2) {{ storage = null; }}
-        }}
-        
+        // 1. Try to recover SID from Iframe LocalStorage (most reliable in cross-origin)
+        var storage = window.localStorage; 
         var sid = storage ? storage.getItem("{COOKIE_NAME}") : null;
+        
+        // If not in iframe storage, try parent (if same-origin)
+        if (!sid) {{
+            try {{
+                if (window.parent && window.parent.localStorage) {{
+                    sid = window.parent.localStorage.getItem("{COOKIE_NAME}");
+                }}
+            }} catch(e) {{}}
+        }}
+
         if (!sid) return;
         
-        // 2. Determine the Target URL (The App's URL)
+        // 2. Determine the Target URL
         var targetUrl = null;
         try {{
-             // Try getting parent location directly
              targetUrl = window.parent.location.href;
         }} catch(e) {{
-             // If Blocked (Cross-Origin), use the iframe's referrer (which is the app page)
+             // Blocked. Try Referrer.
              targetUrl = document.referrer;
+             
+             // If Referrer is empty (New Tab), try ancestorOrigins (Chrome/Edge/Safari)
+             if (!targetUrl && window.location.ancestorOrigins && window.location.ancestorOrigins.length > 0) {{
+                targetUrl = window.location.ancestorOrigins[0];
+             }}
         }}
 
-        if (!targetUrl) return;
+        if (!targetUrl) {{
+            console.warn("MigNar Auth: Found SID but cannot determine parent URL to redirect.");
+            return;
+        }}
 
-        // 3. Append SID and Redirect the Main Window
+        // 3. Append SID and Redirect
         try {{
             var url = new URL(targetUrl);
             if (!url.searchParams.get("sid")) {{
               url.searchParams.set("sid", sid);
-              
-              // Force redirect on the top-most window
               var targetWindow = window.top || window.parent || window;
               targetWindow.location.replace(url.toString());
             }}
         }} catch(e) {{
-            console.log("Error restoring session from storage: ", e);
+            console.error("MigNar Auth: Redirect failed", e);
         }}
       }} catch (e) {{}}
     }})();
