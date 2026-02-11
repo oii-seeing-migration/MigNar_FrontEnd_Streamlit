@@ -169,7 +169,17 @@ def _clear_url_sid():
     except Exception:
         pass
 
-
+def _ensure_sid_from_state() -> str | None:
+    sid = st.session_state.get("_auth_sid")
+    if not sid:
+        user = st.session_state.get("user") or {}
+        uid = user.get("id")
+        if uid:
+            sid = hashlib.sha256(uid.encode()).hexdigest()[:32]
+            st.session_state["_auth_sid"] = sid
+    if sid:
+        _set_url_sid(sid)
+    return sid
 # ─── Supabase client ────────────────────────────────────────────────────────
 
 def get_supabase_client() -> Client:
@@ -300,6 +310,7 @@ def restore_auth_from_storage() -> bool:
     3. local fallback
     """
     if st.session_state.get("session") and st.session_state.get("user"):
+        _ensure_sid_from_state()
         return False
 
     sid = st.session_state.get("_auth_sid") or _get_cookie_sid() or _get_url_sid()
