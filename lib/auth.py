@@ -110,6 +110,7 @@ def _set_cookie_sid(sid: str):
       var sameSite = isHttps ? "None" : "Lax";
       var secure = isHttps ? "; Secure" : "";
       var cookie = "{COOKIE_NAME}={sid}; path=/; max-age={7*86400}; SameSite=" + sameSite + secure;
+      try {{ localStorage.setItem("{COOKIE_NAME}", "{sid}"); }} catch (e) {{}}
       if (window.parent && window.parent.document) {{
         window.parent.document.cookie = cookie;
       }} else {{
@@ -142,6 +143,7 @@ def _clear_cookie_sid():
       var sameSite = isHttps ? "None" : "Lax";
       var secure = isHttps ? "; Secure" : "";
       var cookie = "{COOKIE_NAME}=; path=/; max-age=0; SameSite=" + sameSite + secure;
+      try {{ localStorage.removeItem("{COOKIE_NAME}"); }} catch (e) {{}}
       if (window.parent && window.parent.document) {{
         window.parent.document.cookie = cookie;
       }} else {{
@@ -183,6 +185,27 @@ def _clear_url_sid():
             del st.query_params["sid"]
     except Exception:
         pass
+
+def _inject_sid_from_local_storage():
+    import streamlit.components.v1 as components
+
+    js = f"""
+    <script>
+    (function() {{
+      try {{
+        var sid = localStorage.getItem("{COOKIE_NAME}");
+        if (!sid) return;
+        var url = new URL(window.location.href);
+        if (!url.searchParams.get("sid")) {{
+          url.searchParams.set("sid", sid);
+          window.location.replace(url.toString());
+        }}
+      }} catch (e) {{}}
+    }})();
+    </script>
+    """
+    components.html(js, height=0, width=0)
+
 
 def _ensure_sid_from_state() -> str | None:
     sid = st.session_state.get("_auth_sid")
@@ -331,6 +354,7 @@ def restore_auth_from_storage() -> bool:
 
     sid = st.session_state.get("_auth_sid") or _get_cookie_sid() or _get_url_sid()
     if not sid:
+        _inject_sid_from_local_storage()
         return False
 
     stored = _read_session_shared(sid) or _read_session(sid)
