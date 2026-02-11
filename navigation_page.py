@@ -184,7 +184,8 @@ else:
 
     st.divider()
 
-    tab1, tab2 = st.tabs(["📧 Email", "🌐 Social Login (under development, use email for now)"])
+    tab1, = st.tabs(["📧 Email"])#,
+                    # "🌐 Social Login (under development, use email for now)"])
 
     with tab1:
         st.subheader("Sign in with Email")
@@ -311,119 +312,119 @@ else:
                     else:
                         st.warning("⚠️ Please enter your email")
 
-    with tab2:
-        st.subheader("Sign in with Social Account")
+    # with tab2:
+    #     st.subheader("Sign in with Social Account")
 
-        def get_oauth_url(provider: str) -> str:
-            authorize_url = f"{SB_URL}/auth/v1/authorize"
-            params = {
-                "provider": provider,
-                "redirect_to": REDIRECT_URL,
-                "flow_type": "implicit"
-            }
-            return f"{authorize_url}?{urllib.parse.urlencode(params)}"
+    #     def get_oauth_url(provider: str) -> str:
+    #         authorize_url = f"{SB_URL}/auth/v1/authorize"
+    #         params = {
+    #             "provider": provider,
+    #             "redirect_to": REDIRECT_URL,
+    #             "flow_type": "implicit"
+    #         }
+    #         return f"{authorize_url}?{urllib.parse.urlencode(params)}"
 
-        google_oauth_url = get_oauth_url("google")
-        github_oauth_url = get_oauth_url("github")
+    #     google_oauth_url = get_oauth_url("google")
+    #     github_oauth_url = get_oauth_url("github")
 
-        col1, col2 = st.columns(2)
+    #     col1, col2 = st.columns(2)
 
-        with col1:
-            st.markdown(f"""
-            <a href="{google_oauth_url}" target="_self">
-                <button style="
-                    background-color: #4285F4;
-                    color: white;
-                    padding: 14px 24px;
-                    font-size: 16px;
-                    font-weight: 500;
-                    border: none;
-                    border-radius: 6px;
-                    cursor: pointer;
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    gap: 12px;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-                    transition: background-color 0.3s;
-                    width: 100%;
-                "
-                onmouseover="this.style.backgroundColor='#357ae8'"
-                onmouseout="this.style.backgroundColor='#4285F4'">
-                    <svg width="20" height="20" xmlns="http://www.w3.org/2000/svg"><g fill="none" fill-rule="evenodd"><path d="M17.6 9.2l-.1-1.8H9v3.4h4.8C13.6 12 13 13 12 13.6v2.2h3a8.8 8.8 0 0 0 2.6-6.6z" fill="#FFF"/><path d="M9 18c2.4 0 4.5-.8 6-2.2l-3-2.2a5.4 5.4 0 0 1-8-2.9H1V13a9 9 0 0 0 8 5z" fill="#FFF"/><path d="M4 10.7a5.4 5.4 0 0 1 0-3.4V5H1a9 9 0 0 0 0 8l3-2.3z" fill="#FFF"/><path d="M9 3.6c1.3 0 2.5.4 3.4 1.3L15 2.3A9 9 0 0 0 1 5l3 2.4a5.4 5.4 0 0 1 5-3.7z" fill="#FFF"/></g></svg>
-                    Google
-                </button>
-            </a>
-            """, unsafe_allow_html=True)
+    #     with col1:
+    #         st.markdown(f"""
+    #         <a href="{google_oauth_url}" target="_self">
+    #             <button style="
+    #                 background-color: #4285F4;
+    #                 color: white;
+    #                 padding: 14px 24px;
+    #                 font-size: 16px;
+    #                 font-weight: 500;
+    #                 border: none;
+    #                 border-radius: 6px;
+    #                 cursor: pointer;
+    #                 display: inline-flex;
+    #                 align-items: center;
+    #                 justify-content: center;
+    #                 gap: 12px;
+    #                 box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    #                 transition: background-color 0.3s;
+    #                 width: 100%;
+    #             "
+    #             onmouseover="this.style.backgroundColor='#357ae8'"
+    #             onmouseout="this.style.backgroundColor='#4285F4'">
+    #                 <svg width="20" height="20" xmlns="http://www.w3.org/2000/svg"><g fill="none" fill-rule="evenodd"><path d="M17.6 9.2l-.1-1.8H9v3.4h4.8C13.6 12 13 13 12 13.6v2.2h3a8.8 8.8 0 0 0 2.6-6.6z" fill="#FFF"/><path d="M9 18c2.4 0 4.5-.8 6-2.2l-3-2.2a5.4 5.4 0 0 1-8-2.9H1V13a9 9 0 0 0 8 5z" fill="#FFF"/><path d="M4 10.7a5.4 5.4 0 0 1 0-3.4V5H1a9 9 0 0 0 0 8l3-2.3z" fill="#FFF"/><path d="M9 3.6c1.3 0 2.5.4 3.4 1.3L15 2.3A9 9 0 0 0 1 5l3 2.4a5.4 5.4 0 0 1 5-3.7z" fill="#FFF"/></g></svg>
+    #                 Google
+    #             </button>
+    #         </a>
+    #         """, unsafe_allow_html=True)
 
-        with col2:
-            st.markdown(f"""
-            <a href="{github_oauth_url}" target="_self">
-                <button style="
-                    background-color: #24292e;
-                    color: white;
-                    padding: 14px 24px;
-                    font-size: 16px;
-                    font-weight: 500;
-                    border: none;
-                    border-radius: 6px;
-                    cursor: pointer;
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    gap: 12px;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-                    transition: background-color 0.3s;
-                    width: 100%;
-                "
-                onmouseover="this.style.backgroundColor='#1a1e22'"
-                onmouseout="this.style.backgroundColor='#24292e'">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
-                    GitHub
-                </button>
-            </a>
-            """, unsafe_allow_html=True)
+    #     with col2:
+    #         st.markdown(f"""
+    #         <a href="{github_oauth_url}" target="_self">
+    #             <button style="
+    #                 background-color: #24292e;
+    #                 color: white;
+    #                 padding: 14px 24px;
+    #                 font-size: 16px;
+    #                 font-weight: 500;
+    #                 border: none;
+    #                 border-radius: 6px;
+    #                 cursor: pointer;
+    #                 display: inline-flex;
+    #                 align-items: center;
+    #                 justify-content: center;
+    #                 gap: 12px;
+    #                 box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    #                 transition: background-color 0.3s;
+    #                 width: 100%;
+    #             "
+    #             onmouseover="this.style.backgroundColor='#1a1e22'"
+    #             onmouseout="this.style.backgroundColor='#24292e'">
+    #                 <svg width="20" height="20" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+    #                 GitHub
+    #             </button>
+    #         </a>
+    #         """, unsafe_allow_html=True)
 
-        st.divider()
+    #     st.divider()
 
-        with st.expander("🔧 Manual Social Login"):
-            st.warning("""
-            **If the buttons above don't work**, use this manual method:
+    #     with st.expander("🔧 Manual Social Login"):
+    #         st.warning("""
+    #         **If the buttons above don't work**, use this manual method:
             
-            1. Click one of the links below
-            2. After signing in, **copy the complete URL** from your browser
-            3. Paste it in the text box below
-            """)
+    #         1. Click one of the links below
+    #         2. After signing in, **copy the complete URL** from your browser
+    #         3. Paste it in the text box below
+    #         """)
 
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown(f"[Open Google →]({google_oauth_url})")
-            with col2:
-                st.markdown(f"[Open GitHub →]({github_oauth_url})")
+    #         col1, col2 = st.columns(2)
+    #         with col1:
+    #             st.markdown(f"[Open Google →]({google_oauth_url})")
+    #         with col2:
+    #             st.markdown(f"[Open GitHub →]({github_oauth_url})")
 
-            manual_url = st.text_input(
-                "Paste the redirect URL here:",
-                placeholder=f"{REDIRECT_URL}/#access_token=eyJhbGc...",
-                help="The URL should contain '#access_token=' after you sign in",
-                label_visibility="collapsed",
-                key="manual_oauth_url"
-            )
+    #         manual_url = st.text_input(
+    #             "Paste the redirect URL here:",
+    #             placeholder=f"{REDIRECT_URL}/#access_token=eyJhbGc...",
+    #             help="The URL should contain '#access_token=' after you sign in",
+    #             label_visibility="collapsed",
+    #             key="manual_oauth_url"
+    #         )
 
-            if manual_url:
-                if "#access_token=" in manual_url:
-                    try:
-                        hash_part = manual_url.split("#")[1]
-                        hash_params = dict(urllib.parse.parse_qsl(hash_part))
+    #         if manual_url:
+    #             if "#access_token=" in manual_url:
+    #                 try:
+    #                     hash_part = manual_url.split("#")[1]
+    #                     hash_params = dict(urllib.parse.parse_qsl(hash_part))
 
-                        if "access_token" in hash_params:
-                            new_url = f"{REDIRECT_URL}?access_token={hash_params['access_token']}"
-                            if "refresh_token" in hash_params:
-                                new_url += f"&refresh_token={hash_params['refresh_token']}"
+    #                     if "access_token" in hash_params:
+    #                         new_url = f"{REDIRECT_URL}?access_token={hash_params['access_token']}"
+    #                         if "refresh_token" in hash_params:
+    #                             new_url += f"&refresh_token={hash_params['refresh_token']}"
 
-                            st.success("✅ Token extracted successfully! Redirecting...")
-                            st.markdown(f'<meta http-equiv="refresh" content="0;url={new_url}">', unsafe_allow_html=True)
-                            st.info(f"If you're not redirected, [click here]({new_url})")
-                    except Exception as e:
-                        st.error(f"❌ Error: {e}")
-                else:
-                    st.warning("⚠️ Please sign in first using one of the links above.")
+    #                         st.success("✅ Token extracted successfully! Redirecting...")
+    #                         st.markdown(f'<meta http-equiv="refresh" content="0;url={new_url}">', unsafe_allow_html=True)
+    #                         st.info(f"If you're not redirected, [click here]({new_url})")
+    #                 except Exception as e:
+    #                     st.error(f"❌ Error: {e}")
+    #             else:
+    #                 st.warning("⚠️ Please sign in first using one of the links above.")
