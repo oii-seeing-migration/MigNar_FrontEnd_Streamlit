@@ -110,7 +110,15 @@ def _set_cookie_sid(sid: str):
       var sameSite = isHttps ? "None" : "Lax";
       var secure = isHttps ? "; Secure" : "";
       var cookie = "{COOKIE_NAME}={sid}; path=/; max-age={7*86400}; SameSite=" + sameSite + secure;
-      try {{ localStorage.setItem("{COOKIE_NAME}", "{sid}"); }} catch (e) {{}}
+
+      var storage = null;
+      try {{
+        storage = (window.parent && window.parent.localStorage) ? window.parent.localStorage : window.localStorage;
+      }} catch (e) {{
+        try {{ storage = window.localStorage; }} catch (e2) {{ storage = null; }}
+      }}
+      try {{ if (storage) storage.setItem("{COOKIE_NAME}", "{sid}"); }} catch (e) {{}}
+
       if (window.parent && window.parent.document) {{
         window.parent.document.cookie = cookie;
       }} else {{
@@ -143,7 +151,15 @@ def _clear_cookie_sid():
       var sameSite = isHttps ? "None" : "Lax";
       var secure = isHttps ? "; Secure" : "";
       var cookie = "{COOKIE_NAME}=; path=/; max-age=0; SameSite=" + sameSite + secure;
-      try {{ localStorage.removeItem("{COOKIE_NAME}"); }} catch (e) {{}}
+
+      var storage = null;
+      try {{
+        storage = (window.parent && window.parent.localStorage) ? window.parent.localStorage : window.localStorage;
+      }} catch (e) {{
+        try {{ storage = window.localStorage; }} catch (e2) {{ storage = null; }}
+      }}
+      try {{ if (storage) storage.removeItem("{COOKIE_NAME}"); }} catch (e) {{}}
+
       if (window.parent && window.parent.document) {{
         window.parent.document.cookie = cookie;
       }} else {{
@@ -193,7 +209,13 @@ def _inject_sid_from_local_storage():
     <script>
     (function() {{
       try {{
-        var sid = localStorage.getItem("{COOKIE_NAME}");
+        var storage = null;
+        try {{
+          storage = (window.parent && window.parent.localStorage) ? window.parent.localStorage : window.localStorage;
+        }} catch (e) {{
+          try {{ storage = window.localStorage; }} catch (e2) {{ storage = null; }}
+        }}
+        var sid = storage ? storage.getItem("{COOKIE_NAME}") : null;
         if (!sid) return;
         var url = new URL(window.location.href);
         if (!url.searchParams.get("sid")) {{
