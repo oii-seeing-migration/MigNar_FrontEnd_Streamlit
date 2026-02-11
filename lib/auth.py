@@ -218,16 +218,15 @@ def _clear_url_sid():
 def _inject_sid_from_local_storage():
     import streamlit.components.v1 as components
     
-    # Logic:
-    # 1. Check Iframe Storage (Cloud persistence)
-    # 2. Check Parent Storage (Localhost persistence)
-    # 3. If found, determine Parent URL (document.referrer or window.parent.location)
-    # 4. Redirect Target to Target?sid=SID
-    
+    # We define the App URL explicitly to handle "New Tab" scenarios
+    # where the script cannot read the parent URL due to security/privacy.
+    APP_BASE_URL = "https://mignar.streamlit.app"
+
     js = f"""
     <script>
     (function() {{
       var cookieName = "{COOKIE_NAME}";
+      var appBaseUrl = "{APP_BASE_URL}";
       var sid = null;
       
       // 1. Try Iframe Storage
@@ -244,30 +243,32 @@ def _inject_sid_from_local_storage():
       
       if (!sid) return;
       
-      // 3. Determine Search Target params
-      // We need to check if the TOP window already has SID.
-      // Cross-origin read of window.top.location.search might fail.
+      // 3. Check if we already have SID in the URL (to avoid loops)
       var alreadyHasSid = false;
       try {{
+          // Check top window search params (if allowed)
           var params = new URLSearchParams(window.top.location.search);
           if (params.get("sid")) alreadyHasSid = true;
       }} catch(e) {{
-          // Cross-origin: check referrer if available
+          // Fallback: Check if destination URL matches referrer logic
           if (document.referrer && document.referrer.indexOf("sid=") !== -1) alreadyHasSid = true;
       }}
-      
       if (alreadyHasSid) return;
       
-      // 4. Determine Target URL Base
+      // 4. Determine Target URL
       var targetUrl = "";
       
-      // Try standard Referrer (Works for Iframe in Cloud)
-      if (document.referrer) {{
+      // Priority 1: Use provided App Base URL (Best for New Tabs)
+      if (appBaseUrl) {{
+          targetUrl = appBaseUrl;
+      }}
+      // Priority 2: Use Referrer (Best for navigation within app)
+      else if (document.referrer) {{
           targetUrl = document.referrer;
       }} 
+      // Priority 3: Try to read parent location (Works on Localhost)
       else {{
-          // Try Parent Location (Works for Localhost)
-          try {{ targetUrl = window.parent.location.href; }} catch(e) {{}}
+          try {{ targetUrl = window.parent.location.href.split("?")[0]; }} catch(e) {{}}
       }}
       
       if (!targetUrl) return;
@@ -275,7 +276,6 @@ def _inject_sid_from_local_storage():
       // 5. Redirect
       try {{
           var url = new URL(targetUrl);
-          // Only redirect if sid param is missing
           if (!url.searchParams.get("sid")) {{
               url.searchParams.set("sid", sid);
               
