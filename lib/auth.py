@@ -105,11 +105,17 @@ def _set_cookie_sid(sid: str):
 
     js = f"""
     <script>
-    if (window.parent && window.parent.document) {{
-      window.parent.document.cookie = "{COOKIE_NAME}={sid}; path=/; max-age={7*86400}; SameSite=Lax";
-    }} else {{
-      document.cookie = "{COOKIE_NAME}={sid}; path=/; max-age={7*86400}; SameSite=Lax";
-    }}
+    (function() {{
+      var isHttps = window.location && window.location.protocol === "https:";
+      var sameSite = isHttps ? "None" : "Lax";
+      var secure = isHttps ? "; Secure" : "";
+      var cookie = "{COOKIE_NAME}={sid}; path=/; max-age={7*86400}; SameSite=" + sameSite + secure;
+      if (window.parent && window.parent.document) {{
+        window.parent.document.cookie = cookie;
+      }} else {{
+        document.cookie = cookie;
+      }}
+    }})();
     </script>
     """
     components.html(js, height=0, width=0)
@@ -117,9 +123,12 @@ def _set_cookie_sid(sid: str):
     mgr = _get_cookie_manager()
     if mgr:
         try:
-            mgr.set(COOKIE_NAME, sid, max_age=7 * 86400, path="/", same_site="Lax")
+            mgr.set(COOKIE_NAME, sid, max_age=7 * 86400, path="/", same_site="None", secure=True)
         except Exception:
-            pass
+            try:
+                mgr.set(COOKIE_NAME, sid, max_age=7 * 86400, path="/", same_site="Lax")
+            except Exception:
+                pass
 
 
 def _clear_cookie_sid():
@@ -128,11 +137,17 @@ def _clear_cookie_sid():
 
     js = f"""
     <script>
-    if (window.parent && window.parent.document) {{
-      window.parent.document.cookie = "{COOKIE_NAME}=; path=/; max-age=0; SameSite=Lax";
-    }} else {{
-      document.cookie = "{COOKIE_NAME}=; path=/; max-age=0; SameSite=Lax";
-    }}
+    (function() {{
+      var isHttps = window.location && window.location.protocol === "https:";
+      var sameSite = isHttps ? "None" : "Lax";
+      var secure = isHttps ? "; Secure" : "";
+      var cookie = "{COOKIE_NAME}=; path=/; max-age=0; SameSite=" + sameSite + secure;
+      if (window.parent && window.parent.document) {{
+        window.parent.document.cookie = cookie;
+      }} else {{
+        document.cookie = cookie;
+      }}
+    }})();
     </script>
     """
     components.html(js, height=0, width=0)
@@ -179,6 +194,7 @@ def _ensure_sid_from_state() -> str | None:
             st.session_state["_auth_sid"] = sid
     if sid:
         _set_url_sid(sid)
+        _set_cookie_sid(sid)
     return sid
 # ─── Supabase client ────────────────────────────────────────────────────────
 
@@ -446,6 +462,9 @@ def bind_auth_from_session() -> tuple[bool, str | None, Client]:
 
 
 # ─── Public API ──────────────────────────────────────────────────────────────
+def ensure_sid() -> str | None:
+    """Ensure sid is present in URL and cookie."""
+    return _ensure_sid_from_state()
 
 def get_auth_debug_state() -> dict:
     sid_cookie = _get_cookie_sid()
@@ -504,8 +523,9 @@ def require_auth() -> tuple[bool, str | None, dict | None, Client]:
     restore_auth_from_storage()
     bind_ok, auth_uid, supabase = bind_auth_from_session()
     user = get_current_user()
+    if user:
+        ensure_sid()
     return (bind_ok and bool(auth_uid), auth_uid, user, supabase)
-
 
 def sign_out():
     """Sign out and clear all state."""

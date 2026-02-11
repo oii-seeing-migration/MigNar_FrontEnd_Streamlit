@@ -19,6 +19,7 @@ from lib.auth import (
     sign_out,
     cleanup_old_sessions,
     get_auth_debug_state,
+    ensure_sid,
 )
 
 # -----------------------------------------------------------------------------
@@ -67,6 +68,8 @@ if not st.session_state.user:
 with st.expander("Auth Debug"):
     st.json(get_auth_debug_state())
 
+if st.session_state.user:
+    ensure_sid()
 # -----------------------------------------------------------------------------
 # Helper to decode JWT
 # -----------------------------------------------------------------------------
