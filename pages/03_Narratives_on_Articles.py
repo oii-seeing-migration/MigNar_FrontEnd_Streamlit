@@ -12,12 +12,14 @@ st.set_page_config(page_title="Narratives on Articles",
 from lib.sidebar_style import apply_sidebar_names
 apply_sidebar_names()
 
-from lib.auth import require_auth
+from lib.auth import get_auth_debug_state, require_auth
 
 # At the top of the page (after st.set_page_config)
 BIND_OK, AUTH_UID, USER, supabase = require_auth()
 
-
+with st.expander("Auth Debug"):
+    st.json(get_auth_debug_state())
+    
 STANCE_VALIDATIONS_TABLE = "stance_validations"
 NARRATIVE_VALIDATIONS_TABLE = "narrative_validations"
 
