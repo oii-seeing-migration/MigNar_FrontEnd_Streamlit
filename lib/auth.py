@@ -205,22 +205,48 @@ def _clear_url_sid():
 def _inject_sid_from_local_storage():
     import streamlit.components.v1 as components
 
+    # This script runs in an iframe. We need to:
+    # 1. Read the SID from localStorage (parent or fallback)
+    # 2. Redirect the MAIN window (parent/top) to include the SID
     js = f"""
     <script>
     (function() {{
       try {{
+        // 1. Try to recover SID from LocalStorage
         var storage = null;
         try {{
           storage = (window.parent && window.parent.localStorage) ? window.parent.localStorage : window.localStorage;
         }} catch (e) {{
           try {{ storage = window.localStorage; }} catch (e2) {{ storage = null; }}
         }}
+        
         var sid = storage ? storage.getItem("{COOKIE_NAME}") : null;
         if (!sid) return;
-        var url = new URL(window.location.href);
-        if (!url.searchParams.get("sid")) {{
-          url.searchParams.set("sid", sid);
-          window.location.replace(url.toString());
+        
+        // 2. Determine the Target URL (The App's URL)
+        var targetUrl = null;
+        try {{
+             // Try getting parent location directly
+             targetUrl = window.parent.location.href;
+        }} catch(e) {{
+             // If Blocked (Cross-Origin), use the iframe's referrer (which is the app page)
+             targetUrl = document.referrer;
+        }}
+
+        if (!targetUrl) return;
+
+        // 3. Append SID and Redirect the Main Window
+        try {{
+            var url = new URL(targetUrl);
+            if (!url.searchParams.get("sid")) {{
+              url.searchParams.set("sid", sid);
+              
+              // Force redirect on the top-most window
+              var targetWindow = window.top || window.parent || window;
+              targetWindow.location.replace(url.toString());
+            }}
+        }} catch(e) {{
+            console.log("Error restoring session from storage: ", e);
         }}
       }} catch (e) {{}}
     }})();
