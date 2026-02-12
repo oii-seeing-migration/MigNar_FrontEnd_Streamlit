@@ -33,7 +33,6 @@ def _now_iso() -> str:
 # ─── Local session persistence ──────────────────────────────────────────────
 
 def _session_file(sid: str) -> str:
-    """Get path to a session file. Sanitize sid to prevent path traversal."""
     safe = "".join(c for c in sid if c.isalnum() or c == "-")
     return os.path.join(SESSION_DIR, f"{safe}.json")
 
@@ -100,43 +99,29 @@ def _get_cookie_sid() -> str | None:
 
 
 def _set_cookie_sid(sid: str):
-    """Set session ID cookie (7 days) in parent document."""
+    """Set session ID cookie via JS (best effort) + CookieManager."""
     import streamlit.components.v1 as components
 
-    # We aggressively try to store the SID in every possible storage location:
-    # 1. The Component's LocalStorage (Reliable on Cloud/Sandboxed)
-    # 2. The Parent's LocalStorage (Reliable on Localhost/Same-Origin)
-    # 3. Cookies (Best effort)
     js = f"""
     <script>
     (function() {{
       var sid = "{sid}";
       var cookieName = "{COOKIE_NAME}";
-      
-      // 1. Iframe Storage (Critical for Cloud)
-      try {{
-        window.localStorage.setItem(cookieName, sid);
-      }} catch (e) {{}}
 
-      // 2. Parent Storage (Critical for Localhost/Same-Origin)
-      try {{
-        if (window.parent && window.parent.localStorage) {{
-             window.parent.localStorage.setItem(cookieName, sid);
-        }}
-      }} catch (e) {{}}
+      // Try setting cookie on every frame we can access
+      var frames = [window];
+      try {{ if (window.parent && window.parent !== window) frames.push(window.parent); }} catch(e) {{}}
+      try {{ if (window.top && window.top !== window && window.top !== window.parent) frames.push(window.top); }} catch(e) {{}}
 
-      // 3. Cookies
       var isHttps = window.location.protocol === "https:";
       var sameSite = isHttps ? "None" : "Lax";
       var secure = isHttps ? "; Secure" : "";
       var cookieVal = cookieName + "=" + sid + "; path=/; max-age={7*86400}; SameSite=" + sameSite + secure;
-      
-      try {{ document.cookie = cookieVal; }} catch(e) {{}}
-      try {{ 
-          if (window.parent && window.parent.document) {{
-              window.parent.document.cookie = cookieVal;
-          }}
-      }} catch(e) {{}}
+
+      for (var i = 0; i < frames.length; i++) {{
+        try {{ frames[i].document.cookie = cookieVal; }} catch(e) {{}}
+        try {{ frames[i].localStorage.setItem(cookieName, sid); }} catch(e) {{}}
+      }}
     }})();
     </script>
     """
@@ -160,23 +145,19 @@ def _clear_cookie_sid():
     js = f"""
     <script>
     (function() {{
-      var isHttps = window.location && window.location.protocol === "https:";
+      var cookieName = "{COOKIE_NAME}";
+      var frames = [window];
+      try {{ if (window.parent && window.parent !== window) frames.push(window.parent); }} catch(e) {{}}
+      try {{ if (window.top && window.top !== window && window.top !== window.parent) frames.push(window.top); }} catch(e) {{}}
+
+      var isHttps = window.location.protocol === "https:";
       var sameSite = isHttps ? "None" : "Lax";
       var secure = isHttps ? "; Secure" : "";
-      var cookie = "{COOKIE_NAME}=; path=/; max-age=0; SameSite=" + sameSite + secure;
+      var cookieVal = cookieName + "=; path=/; max-age=0; SameSite=" + sameSite + secure;
 
-      var storage = null;
-      try {{
-        storage = (window.parent && window.parent.localStorage) ? window.parent.localStorage : window.localStorage;
-      }} catch (e) {{
-        try {{ storage = window.localStorage; }} catch (e2) {{ storage = null; }}
-      }}
-      try {{ if (storage) storage.removeItem("{COOKIE_NAME}"); }} catch (e) {{}}
-
-      if (window.parent && window.parent.document) {{
-        window.parent.document.cookie = cookie;
-      }} else {{
-        document.cookie = cookie;
+      for (var i = 0; i < frames.length; i++) {{
+        try {{ frames[i].document.cookie = cookieVal; }} catch(e) {{}}
+        try {{ frames[i].localStorage.removeItem(cookieName); }} catch(e) {{}}
       }}
     }})();
     </script>
@@ -215,80 +196,6 @@ def _clear_url_sid():
     except Exception:
         pass
 
-def _inject_sid_from_local_storage():
-    import streamlit.components.v1 as components
-    
-    # We define the App URL explicitly to handle "New Tab" scenarios
-    # where the script cannot read the parent URL due to security/privacy.
-    APP_BASE_URL = "https://mignar.streamlit.app"
-
-    js = f"""
-    <script>
-    (function() {{
-      var cookieName = "{COOKIE_NAME}";
-      var appBaseUrl = "{APP_BASE_URL}";
-      var sid = null;
-      
-      // 1. Try Iframe Storage
-      try {{ sid = window.localStorage.getItem(cookieName); }} catch(e) {{}}
-      
-      // 2. Try Parent Storage
-      if (!sid) {{
-          try {{
-            if (window.parent && window.parent.localStorage) {{
-                sid = window.parent.localStorage.getItem(cookieName);
-            }}
-          }} catch(e) {{}}
-      }}
-      
-      if (!sid) return;
-      
-      // 3. Check if we already have SID in the URL (to avoid loops)
-      var alreadyHasSid = false;
-      try {{
-          // Check top window search params (if allowed)
-          var params = new URLSearchParams(window.top.location.search);
-          if (params.get("sid")) alreadyHasSid = true;
-      }} catch(e) {{
-          // Fallback: Check if destination URL matches referrer logic
-          if (document.referrer && document.referrer.indexOf("sid=") !== -1) alreadyHasSid = true;
-      }}
-      if (alreadyHasSid) return;
-      
-      // 4. Determine Target URL
-      var targetUrl = "";
-      
-      // Priority 1: Use provided App Base URL (Best for New Tabs)
-      if (appBaseUrl) {{
-          targetUrl = appBaseUrl;
-      }}
-      // Priority 2: Use Referrer (Best for navigation within app)
-      else if (document.referrer) {{
-          targetUrl = document.referrer;
-      }} 
-      // Priority 3: Try to read parent location (Works on Localhost)
-      else {{
-          try {{ targetUrl = window.parent.location.href.split("?")[0]; }} catch(e) {{}}
-      }}
-      
-      if (!targetUrl) return;
-
-      // 5. Redirect
-      try {{
-          var url = new URL(targetUrl);
-          if (!url.searchParams.get("sid")) {{
-              url.searchParams.set("sid", sid);
-              
-              // Force top window redirect
-              window.top.location.href = url.toString();
-          }}
-      }} catch(e) {{
-          console.log("Auto-login redirect failed: ", e);
-      }}
-    }})();
-    </script>
-    """
-    components.html(js, height=0, width=0)
 
 def _inject_sid_into_links(sid: str):
     if not sid or st.session_state.get("_sid_links_injected") == sid:
@@ -358,6 +265,7 @@ def _inject_sid_into_links(sid: str):
     components.html(js, height=0, width=0)
     st.session_state["_sid_links_injected"] = sid
 
+
 def _ensure_sid_from_state() -> str | None:
     sid = st.session_state.get("_auth_sid")
     if not sid:
@@ -370,6 +278,8 @@ def _ensure_sid_from_state() -> str | None:
         _set_url_sid(sid)
         _set_cookie_sid(sid)
     return sid
+
+
 # ─── Supabase client ────────────────────────────────────────────────────────
 
 def get_supabase_client() -> Client:
@@ -432,6 +342,44 @@ def _read_session_shared(sid: str) -> dict | None:
         return None
 
 
+def _find_any_valid_session() -> tuple[str | None, dict | None]:
+    """
+    Last-resort: find ANY valid (non-expired) session in the shared table.
+    This handles the "new tab on Cloud" case where we have zero client-side
+    state but the user IS logged in on another tab.
+    
+    We pick the most recently updated session.
+    """
+    try:
+        supabase = get_supabase_client()
+        res = (
+            supabase.table(SESSION_TABLE)
+            .select("sid, data")
+            .order("updated_at", desc=True)
+            .limit(5)
+            .execute()
+        )
+        rows = getattr(res, "data", None) or []
+        now = _now_ts()
+        for row in rows:
+            sid = row.get("sid")
+            data = row.get("data") or {}
+            ts = data.get("_ts", 0)
+            if ts and now - ts > SESSION_TTL_DAYS * 86400:
+                continue
+            at = data.get("access_token")
+            if not at:
+                continue
+            payload = jwt_payload(at) or {}
+            exp = payload.get("exp", 0)
+            # Accept if token is valid OR there's a refresh token
+            if exp > now or data.get("refresh_token"):
+                return (sid, data)
+        return (None, None)
+    except Exception:
+        return (None, None)
+
+
 def _delete_session_shared(sid: str):
     try:
         supabase = get_supabase_client()
@@ -492,22 +440,8 @@ def clear_auth_from_storage():
     _clear_url_sid()
 
 
-def restore_auth_from_storage() -> bool:
-    """
-    Try to restore auth. Checks:
-    1. session_state
-    2. shared session
-    3. local fallback
-    """
-    if st.session_state.get("session") and st.session_state.get("user"):
-        _ensure_sid_from_state()
-        return False
-
-    sid = st.session_state.get("_auth_sid") or _get_cookie_sid() or _get_url_sid()
-    if not sid:
-        _inject_sid_from_local_storage()
-        return False
-
+def _try_restore_from_stored(sid: str) -> bool:
+    """Given a valid sid, try to restore session from shared or local storage."""
     stored = _read_session_shared(sid) or _read_session(sid)
     if not stored:
         return False
@@ -555,6 +489,39 @@ def restore_auth_from_storage() -> bool:
             _delete_session_shared(sid)
             _delete_session(sid)
             _clear_cookie_sid()
+
+    return False
+
+
+def restore_auth_from_storage() -> bool:
+    """
+    Try to restore auth. Checks (in order):
+    1. Already in session_state
+    2. SID from URL param (?sid=...)
+    3. SID from cookie
+    4. Last-resort: find any valid session in Supabase (handles new-tab on Cloud)
+    """
+    # 1. Already authenticated in this session
+    if st.session_state.get("session") and st.session_state.get("user"):
+        _ensure_sid_from_state()
+        return False
+
+    # 2. Try SID from URL or cookie
+    sid = _get_url_sid() or _get_cookie_sid() or st.session_state.get("_auth_sid")
+    if sid:
+        if _try_restore_from_stored(sid):
+            return True
+
+    # 3. Last resort: find any valid session in the shared table
+    # This is the key fix for "new tab on Cloud" — no cookie/URL needed
+    found_sid, found_data = _find_any_valid_session()
+    if found_sid and found_data:
+        at = found_data.get("access_token")
+        rt = found_data.get("refresh_token")
+        user = found_data.get("user")
+        if at and user:
+            if _try_restore_from_stored(found_sid):
+                return True
 
     return False
 
