@@ -70,8 +70,17 @@ def _delete_session(sid: str):
 
 # ─── Cookie / localStorage helpers ──────────────────────────────────────────
 
+def _get_cookie_manager():
+    if "_cookie_manager" not in st.session_state:
+        try:
+            import extra_streamlit_components as stx
+        except Exception:
+            return None
+        st.session_state["_cookie_manager"] = stx.CookieManager()
+    return st.session_state["_cookie_manager"]
+
 def _get_cookie_sid() -> str | None:
-    """Read session ID from browser cookie (HTTP headers)."""
+    """Read session ID from browser cookie (HTTP headers, then CookieManager)."""
     try:
         cookies = st.context.cookies
         val = cookies.get(COOKIE_NAME)
@@ -79,6 +88,15 @@ def _get_cookie_sid() -> str | None:
             return val
     except Exception:
         pass
+
+    mgr = _get_cookie_manager()
+    if mgr:
+        try:
+            val = mgr.get(COOKIE_NAME)
+            if val:
+                return val
+        except Exception:
+            pass
     return None
 
 
@@ -130,6 +148,16 @@ def _set_cookie_and_ls(sid: str):
     """
     components.html(js, height=0, width=0)
 
+    mgr = _get_cookie_manager()
+    if mgr:
+        try:
+            mgr.set(COOKIE_NAME, sid, max_age=7 * 86400, path="/", same_site="None", secure=True)
+        except Exception:
+            try:
+                mgr.set(COOKIE_NAME, sid, max_age=7 * 86400, path="/", same_site="Lax")
+            except Exception:
+                pass
+
 
 def _clear_cookie_and_ls():
     """Clear session ID cookie + localStorage on all reachable frames."""
@@ -166,6 +194,13 @@ def _clear_cookie_and_ls():
     </script>
     """
     components.html(js, height=0, width=0)
+
+    mgr = _get_cookie_manager()
+    if mgr:
+        try:
+            mgr.delete(COOKIE_NAME)
+        except Exception:
+            pass
 
 
 def _read_sid_from_localstorage() -> str | None:
@@ -541,8 +576,20 @@ def restore_auth_from_storage() -> bool:
         if _try_restore_from_stored(sid):
             return True
 
-    # 3. No SID found yet → inject the localStorage-to-cookie bridge
-    #    and rerun ONCE to let the cookie propagate.
+    # 3. No SID found yet → run one-time CookieManager probe rerun.
+    #    In fresh tabs, cookie component values may appear after first render.
+    if not st.session_state.get("_cookie_probe_rerun_done"):
+        _get_cookie_manager()
+        st.session_state["_cookie_probe_rerun_done"] = True
+        st.rerun()
+
+    # 4. Retry SID from cookie after probe rerun.
+    sid = _get_cookie_sid()
+    if sid:
+        if _try_restore_from_stored(sid):
+            return True
+
+    # 5. Fallback: localStorage-to-cookie bridge + one rerun.
     if not st.session_state.get("_ls_bridge_rerun_done"):
         _read_sid_from_localstorage()          # injects JS that copies LS → cookie
         st.session_state["_ls_bridge_rerun_done"] = True
@@ -551,7 +598,7 @@ def restore_auth_from_storage() -> bool:
         st.rerun()
         # (execution stops here)
 
-    # 4. After rerun: check cookie again (now might have the LS value)
+    # 6. After bridge rerun: check cookie again (now might have the LS value)
     sid = _get_cookie_sid()
     if sid:
         if _try_restore_from_stored(sid):
@@ -678,6 +725,7 @@ def get_auth_debug_state() -> dict:
         "url_sid": sid_url,
         "session_sid": sid_state,
         "active_sid": sid,
+        "cookie_probe_rerun_done": st.session_state.get("_cookie_probe_rerun_done", False),
         "ls_bridge_done": st.session_state.get("_ls_bridge_done", False),
         "ls_bridge_rerun_done": st.session_state.get("_ls_bridge_rerun_done", False),
         "session_shared_exists": bool(shared),
@@ -716,6 +764,8 @@ def sign_out():
     st.session_state.pop("user", None)
     st.session_state.pop("supabase_client", None)
     st.session_state.pop("_auth_sid", None)
+    st.session_state.pop("_cookie_manager", None)
+    st.session_state.pop("_cookie_probe_rerun_done", None)
     st.session_state.pop("_ls_bridge_done", None)
     st.session_state.pop("_ls_bridge_rerun_done", None)
     clear_auth_from_storage()
