@@ -72,18 +72,12 @@ def upsert_stance_validation(user: dict, source_table: str, article_id: str, art
 
 def upsert_narrative_validation(user: dict, source_table: str, article_id: str, article_title: str,
                                  article_body: str, model: str, theme: str, meso_narrative: str, 
-                                 text_fragment: str, score: int | None, user_comment: str = "") -> bool:
+                                 text_fragment: str, user_score: int | None, 
+                                 user_comment: str = "", taxonomy_version: int | None = None) -> bool:
     uid = AUTH_UID or user.get("id")
     if not uid:
         return False
     try:
-        if score is None:
-            is_correct = None
-        elif score <= 2:
-            is_correct = False
-        else:
-            is_correct = True
-            
         payload = {
             "user_id": str(uid),
             "user_name": user.get("name") or user.get("email") or "Unknown",
@@ -95,8 +89,9 @@ def upsert_narrative_validation(user: dict, source_table: str, article_id: str, 
             "theme": theme,
             "meso_narrative": meso_narrative,
             "text_fragment": text_fragment or "",
-            "is_correct": is_correct,
-            "user_comment": f"Score: {score}/5. {user_comment}" if score is not None else user_comment,
+            "user_score": user_score,
+            "user_comment": user_comment or "",
+            "taxonomy_version": taxonomy_version,
         }
         supabase.table(NARRATIVE_VALIDATIONS_TABLE).upsert(payload, on_conflict="user_id,source_table,article_id,model,theme,meso_narrative").execute()
         return True
@@ -179,60 +174,26 @@ def extract_stance_per_model(row: pd.Series) -> dict[str, str]:
     return stances
 
 def compute_ensemble_stance(stances: dict[str, str]) -> str:
-    """
-    Compute ensemble stance from individual model stances.
-    
-    Algorithm:
-    1. Plurality rule: If a single label has the highest count, assign that label.
-    2. Tiebreaking: When multiple labels share the maximum count:
-       - If both OPEN and RESTRICTIVE are tied leaders (both > 0), assign NEUTRAL
-       - Otherwise, apply priority ordering: IRRELEVANT > NEUTRAL > OPEN > RESTRICTIVE
-    
-    Args:
-        stances: Dict mapping model_name -> stance label (OPEN/RESTRICTIVE/NEUTRAL/IRRELEVANT)
-    
-    Returns:
-        Ensemble stance label
-    """
     if not stances:
         return "UNKNOWN"
-    
-    # Count votes for each stance label
     stance_counts = Counter(stances.values())
     c_open = stance_counts.get("OPEN", 0)
     c_restrictive = stance_counts.get("RESTRICTIVE", 0)
     c_neutral = stance_counts.get("NEUTRAL", 0)
     c_irrelevant = stance_counts.get("IRRELEVANT", 0)
-    
     counts = {
-        "OPEN": c_open,
-        "RESTRICTIVE": c_restrictive,
-        "NEUTRAL": c_neutral,
-        "IRRELEVANT": c_irrelevant,
+        "OPEN": c_open, "RESTRICTIVE": c_restrictive,
+        "NEUTRAL": c_neutral, "IRRELEVANT": c_irrelevant,
     }
-    
-    # Find maximum count
     max_count = max(counts.values())
-    
-    # Find all labels with maximum count (winners)
     winners = [label for label, count in counts.items() if count == max_count]
-    
-    # Plurality rule: single winner
     if len(winners) == 1:
         return winners[0]
-    
-    # Tiebreaking
-    # If both OPEN and RESTRICTIVE are among tied leaders with count > 0, assign NEUTRAL
     if "OPEN" in winners and "RESTRICTIVE" in winners and c_open > 0 and c_restrictive > 0:
         return "NEUTRAL"
-    
-    # Otherwise, apply priority ordering: IRRELEVANT > NEUTRAL > OPEN > RESTRICTIVE
-    priority_order = ["IRRELEVANT", "NEUTRAL", "OPEN", "RESTRICTIVE"]
-    for label in priority_order:
+    for label in ["IRRELEVANT", "NEUTRAL", "OPEN", "RESTRICTIVE"]:
         if label in winners:
             return label
-    
-    # Fallback (should not reach here)
     return "UNKNOWN"
 
 df["_stance_per_model"] = df.apply(extract_stance_per_model, axis=1)
@@ -333,19 +294,16 @@ if pre_title:
     from urllib.parse import unquote
     pre_title_decoded = unquote(pre_title)
     
-    # First try exact match
     if pre_title_decoded in titles:
         pre_title_idx = titles.index(pre_title_decoded)
     else:
-        # Try prefix match (for truncated titles ending with "...")
         if pre_title_decoded.endswith("..."):
-            prefix = pre_title_decoded[:-3]  # Remove the "..."
+            prefix = pre_title_decoded[:-3]
             for idx, t in enumerate(titles):
                 if t.startswith(prefix):
                     pre_title_idx = idx
                     break
         else:
-            # Try if any title starts with the decoded value
             for idx, t in enumerate(titles):
                 if t.startswith(pre_title_decoded) or pre_title_decoded.startswith(t.rstrip("...")):
                     pre_title_idx = idx
@@ -371,6 +329,13 @@ article_id = str(row.get("article_id", ""))
 article_title = row.get("title", "")
 ensemble_stance = row.get("_ensemble_stance", "UNKNOWN")
 
+taxonomy_version = row.get("version", None)
+# Convert to int if present (parquet may store as float)
+if taxonomy_version is not None:
+    try:
+        taxonomy_version = int(taxonomy_version)
+    except (ValueError, TypeError):
+        taxonomy_version = None
 
 def extract_all_model_narratives(r: pd.Series):
     out = []
@@ -538,12 +503,6 @@ st.markdown("""<style>
 .stance-neutral { background-color: #fff9c4; color: #f57f17; }
 .stance-irrelevant { background-color: #e0e0e0; color: #616161; }
 .stance-unknown { background-color: #f5f5f5; color: #9e9e9e; }
-.val-table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 0.9rem; }
-.val-table th { text-align: left; padding: 8px 12px; background: #f1f5f9; border-bottom: 2px solid #e2e8f0; font-weight: 600; color: #475569; }
-.val-table td { padding: 8px 12px; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
-.val-table tr:hover { background: #f8fafc; }
-.val-table tr.ensemble-row { background: #f1f5f9; font-weight: 600; }
-.val-table tr.ensemble-row td { border-top: 2px solid #cbd5e1; }
 </style>""", unsafe_allow_html=True)
 
 st.markdown(apply_highlights(body_text, segments), unsafe_allow_html=True)
@@ -564,7 +523,6 @@ if USER and AUTH_UID and BIND_OK:
     st.markdown(f"<div class='login-banner logged'>✅ Signed in as <strong>{USER.get('name') or USER.get('email')}</strong> — Validate the LLM annotations below</div>", unsafe_allow_html=True)
 elif USER:
     st.markdown("<div class='login-banner'>⚠️ Signed in, but database session not fully bound. Try refreshing the page.</div>", unsafe_allow_html=True)
-
 else:
     st.markdown("<div class='login-banner'>🔐 <a href='/'>Sign in</a> to validate LLM annotations.</div>", unsafe_allow_html=True)
 
@@ -589,7 +547,7 @@ with st.form(key="validation_form", clear_on_submit=False):
         st.info("No narrative annotations found for this article.")
     else:
         # Column headers
-        header_cols = st.columns([0.10, 0.15, 0.30, 0.30, 0.15])
+        header_cols = st.columns([0.13, 0.14, 0.25, 0.25, 0.10, 0.15])
         with header_cols[0]:
             st.markdown("**Model**")
         with header_cols[1]:
@@ -600,10 +558,11 @@ with st.form(key="validation_form", clear_on_submit=False):
             st.markdown("**Fragment**")
         with header_cols[4]:
             st.markdown("**Score**")
+        with header_cols[5]:
+            st.markdown("**Comment**")
         
         st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
         
-        # Create the validation table with score column
         for idx, obj in enumerate(all_ann_frag_objs):
             model = obj["model"]
             theme = obj["theme"]
@@ -613,20 +572,13 @@ with st.form(key="validation_form", clear_on_submit=False):
             
             # Check for existing validation
             existing = existing_narrative_validations.get((model, theme, meso), {})
+            existing_score = existing.get("user_score") if existing else None
             existing_comment = existing.get("user_comment", "") if existing else ""
-            existing_score = None
-            if existing_comment and existing_comment.startswith("Score: "):
-                try:
-                    existing_score = int(existing_comment.split("/")[0].replace("Score: ", ""))
-                except:
-                    pass
             
-            # Create columns for each row: Model | Theme | Meso | Fragment | Score
-            cols = st.columns([0.10, 0.15, 0.30, 0.30, 0.15])
+            cols = st.columns([0.13, 0.14, 0.25, 0.25, 0.10, 0.15])
             
             with cols[0]:
                 if is_logged_in:
-                    # Use expander for spoiler effect - just eye icon
                     with st.expander("👁️", expanded=False):
                         st.caption(model)
                 else:
@@ -648,9 +600,9 @@ with st.form(key="validation_form", clear_on_submit=False):
             with cols[4]:
                 if is_logged_in:
                     score_options = ["—", "0", "1", "2", "3", "4", "5"]
-                    default_idx = score_options.index(str(existing_score)) if existing_score is not None else 0
+                    default_idx = score_options.index(str(existing_score)) if existing_score is not None and str(existing_score) in score_options else 0
                     widget_values[f"narr_score::{idx}"] = st.selectbox(
-                        f"Score",
+                        "Score",
                         options=score_options,
                         index=default_idx,
                         key=f"narr_score_{source_table}_{article_id}_{idx}",
@@ -658,6 +610,18 @@ with st.form(key="validation_form", clear_on_submit=False):
                     )
                 else:
                     st.selectbox("Score", options=["—"], disabled=True, key=f"narr_score_disabled_{idx}", label_visibility="collapsed")
+            
+            with cols[5]:
+                if is_logged_in:
+                    widget_values[f"narr_comment::{idx}"] = st.text_input(
+                        "Comment",
+                        value=existing_comment,
+                        key=f"narr_comment_{source_table}_{article_id}_{idx}",
+                        placeholder="Optional note...",
+                        label_visibility="collapsed"
+                    )
+                else:
+                    st.text_input("Comment", placeholder="", disabled=True, key=f"narr_comment_disabled_{idx}", label_visibility="collapsed")
     
     st.markdown("---")
     
@@ -665,8 +629,7 @@ with st.form(key="validation_form", clear_on_submit=False):
     st.subheader("➕ Suggest a Missing Narrative")
     st.caption("If you think the LLMs missed a narrative in this article, suggest it here.")
     
-    # Column headers for suggestions
-    suggest_header_cols = st.columns([0.25, 0.35, 0.25, 0.15])
+    suggest_header_cols = st.columns([0.20, 0.30, 0.20, 0.13, 0.15])
     with suggest_header_cols[0]:
         st.markdown("**Theme**")
     with suggest_header_cols[1]:
@@ -674,11 +637,12 @@ with st.form(key="validation_form", clear_on_submit=False):
     with suggest_header_cols[2]:
         st.markdown("**Text Fragment**")
     with suggest_header_cols[3]:
-        st.markdown("**Confidence**")
+        st.markdown("**Score**")
+    with suggest_header_cols[4]:
+        st.markdown("**Comment**")
     
-    # 3 rows for suggestions
     for suggest_idx in range(3):
-        suggest_cols = st.columns([0.25, 0.35, 0.25, 0.15])
+        suggest_cols = st.columns([0.20, 0.30, 0.20, 0.13, 0.15])
         with suggest_cols[0]:
             if is_logged_in:
                 widget_values[f"suggest_theme_{suggest_idx}"] = st.text_input(
@@ -719,6 +683,16 @@ with st.form(key="validation_form", clear_on_submit=False):
                 )
             else:
                 st.selectbox("Score", options=["—"], disabled=True, key=f"suggest_score_disabled_{suggest_idx}", label_visibility="collapsed")
+        with suggest_cols[4]:
+            if is_logged_in:
+                widget_values[f"suggest_comment_{suggest_idx}"] = st.text_input(
+                    "Comment",
+                    key=f"suggest_comment_{source_table}_{article_id}_{suggest_idx}",
+                    placeholder="Optional note...",
+                    label_visibility="collapsed"
+                )
+            else:
+                st.text_input("Comment", placeholder="", disabled=True, key=f"suggest_comment_disabled_{suggest_idx}", label_visibility="collapsed")
     
     st.markdown("---")
     
@@ -745,7 +719,6 @@ with st.form(key="validation_form", clear_on_submit=False):
         else:
             st.text_input("Comment", placeholder="", disabled=True, label_visibility="collapsed")
     
-    # LLM Stances - use expander as spoiler
     if stance_per_model:
         st.markdown("**LLM Stance Predictions:**")
         
@@ -776,11 +749,22 @@ if save_clicked and is_logged_in:
     success_count = 0
     fail_count = 0
     
+    # Process LLM narrative validations
     for idx, obj in enumerate(all_ann_frag_objs):
         score_val = widget_values.get(f"narr_score::{idx}", "—")
-        if score_val != "—":
-            score = int(score_val)
-            if upsert_narrative_validation(user=USER, source_table=source_table, article_id=article_id, article_title=article_title, article_body=body_text, model=obj["model"], theme=obj["theme"], meso_narrative=obj["meso"], text_fragment=obj["fragment"] if obj["has_fragment"] else "", score=score, user_comment=""):
+        comment_val = widget_values.get(f"narr_comment::{idx}", "").strip()
+        
+        # Save if user provided a score OR a comment
+        if score_val != "—" or comment_val:
+            score = int(score_val) if score_val != "—" else None
+            if upsert_narrative_validation(
+                user=USER, source_table=source_table, article_id=article_id,
+                article_title=article_title, article_body=body_text,
+                model=obj["model"], theme=obj["theme"], meso_narrative=obj["meso"],
+                text_fragment=obj["fragment"] if obj["has_fragment"] else "",
+                user_score=score, user_comment=comment_val,
+                taxonomy_version=taxonomy_version
+            ):
                 success_count += 1
             else:
                 fail_count += 1
@@ -791,13 +775,22 @@ if save_clicked and is_logged_in:
         suggest_meso = widget_values.get(f"suggest_meso_{suggest_idx}", "").strip()
         suggest_fragment = widget_values.get(f"suggest_fragment_{suggest_idx}", "").strip()
         suggest_score_val = widget_values.get(f"suggest_score_{suggest_idx}", "—")
+        suggest_comment = widget_values.get(f"suggest_comment_{suggest_idx}", "").strip()
         
         if suggest_theme and suggest_meso and suggest_score_val != "—":
-            if upsert_narrative_validation(user=USER, source_table=source_table, article_id=article_id, article_title=article_title, article_body=body_text, model="human_suggested", theme=suggest_theme, meso_narrative=suggest_meso, text_fragment=suggest_fragment, score=int(suggest_score_val), user_comment="User-suggested narrative"):
+            if upsert_narrative_validation(
+                user=USER, source_table=source_table, article_id=article_id,
+                article_title=article_title, article_body=body_text,
+                model="human_suggested", theme=suggest_theme,
+                meso_narrative=suggest_meso, text_fragment=suggest_fragment,
+                user_score=int(suggest_score_val), user_comment=suggest_comment,
+                taxonomy_version=taxonomy_version
+            ):
                 success_count += 1
             else:
                 fail_count += 1
     
+    # Process stance validation
     user_stance = widget_values.get("user_stance", "—")
     stance_comment = widget_values.get("stance_comment", "")
     

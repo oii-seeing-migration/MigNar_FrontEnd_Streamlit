@@ -6,6 +6,7 @@ import os
 import time
 from datetime import datetime, timezone, timedelta
 import streamlit as st
+import streamlit.components.v1 as components
 from supabase import create_client, Client
 
 TOKEN_REFRESH_BUFFER_SECONDS = 600
@@ -67,7 +68,7 @@ def _delete_session(sid: str):
             pass
 
 
-# ─── Cookie-based session ID ────────────────────────────────────────────────
+# ─── Cookie / localStorage session ID ───────────────────────────────────────
 
 def _get_cookie_manager():
     if "_cookie_manager" not in st.session_state:
@@ -99,16 +100,13 @@ def _get_cookie_sid() -> str | None:
 
 
 def _set_cookie_sid(sid: str):
-    """Set session ID cookie via JS (best effort) + CookieManager."""
-    import streamlit.components.v1 as components
-
+    """Set session ID cookie + parent-frame localStorage (cross-tab persistence)."""
     js = f"""
     <script>
     (function() {{
       var sid = "{sid}";
       var cookieName = "{COOKIE_NAME}";
 
-      // Try setting cookie on every frame we can access
       var frames = [window];
       try {{ if (window.parent && window.parent !== window) frames.push(window.parent); }} catch(e) {{}}
       try {{ if (window.top && window.top !== window && window.top !== window.parent) frames.push(window.top); }} catch(e) {{}}
@@ -139,9 +137,7 @@ def _set_cookie_sid(sid: str):
 
 
 def _clear_cookie_sid():
-    """Clear session ID cookie."""
-    import streamlit.components.v1 as components
-
+    """Clear session ID cookie + localStorage."""
     js = f"""
     <script>
     (function() {{
@@ -172,6 +168,87 @@ def _clear_cookie_sid():
             pass
 
 
+def _read_sid_from_localstorage() -> str | None:
+    """
+    Read sid from parent-frame localStorage via a hidden component.
+    This is the key mechanism for cross-tab session on Streamlit Cloud:
+    localStorage is per-origin and shared across tabs in the same browser,
+    so it's user-scoped (unlike the DB which is shared across all users).
+    
+    Returns the sid if found, or None.
+    Uses a Streamlit component that posts the value back.
+    """
+    # Check if we already retrieved it this run
+    if "_ls_sid_value" in st.session_state:
+        return st.session_state["_ls_sid_value"]
+
+    # We use a two-phase approach:
+    # Phase 1: Inject JS that reads localStorage and stores in a hidden input
+    # Phase 2: Read the value on next rerun via query params
+    
+    # Check if the value was posted back via query params
+    try:
+        ls_sid = st.query_params.get("_ls_sid")
+        if isinstance(ls_sid, list):
+            ls_sid = ls_sid[0] if ls_sid else None
+        if ls_sid and ls_sid != "none":
+            st.session_state["_ls_sid_value"] = ls_sid
+            # Clean up the param
+            try:
+                del st.query_params["_ls_sid"]
+            except Exception:
+                pass
+            return ls_sid
+    except Exception:
+        pass
+
+    # Inject JS to read localStorage and redirect with the value
+    # Only do this once per session to avoid redirect loops
+    if not st.session_state.get("_ls_sid_requested"):
+        st.session_state["_ls_sid_requested"] = True
+        js = f"""
+        <script>
+        (function() {{
+          var cookieName = "{COOKIE_NAME}";
+          var sid = null;
+          
+          // Try reading from localStorage in parent frames
+          var frames = [window];
+          try {{ if (window.parent && window.parent !== window) frames.push(window.parent); }} catch(e) {{}}
+          try {{ if (window.top && window.top !== window && window.top !== window.parent) frames.push(window.top); }} catch(e) {{}}
+          
+          for (var i = 0; i < frames.length; i++) {{
+            try {{
+              var val = frames[i].localStorage.getItem(cookieName);
+              if (val) {{ sid = val; break; }}
+            }} catch(e) {{}}
+          }}
+          
+          if (sid) {{
+            // Post back to Streamlit via query param
+            var url = new URL(window.location.href);
+            if (!url.searchParams.get("_ls_sid")) {{
+              url.searchParams.set("_ls_sid", sid);
+              // Navigate the parent frame to trigger rerun
+              try {{
+                window.parent.location.href = url.toString();
+              }} catch(e) {{
+                try {{
+                  window.location.href = url.toString();
+                }} catch(e2) {{}}
+              }}
+            }}
+          }}
+        }})();
+        </script>
+        """
+        components.html(js, height=0, width=0)
+
+    return None
+
+
+# ─── URL param helpers ───────────────────────────────────────────────────────
+
 def _get_url_sid() -> str | None:
     try:
         val = st.query_params.get("sid")
@@ -200,8 +277,6 @@ def _clear_url_sid():
 def _inject_sid_into_links(sid: str):
     if not sid or st.session_state.get("_sid_links_injected") == sid:
         return
-
-    import streamlit.components.v1 as components
 
     js = f"""
     <script>
@@ -342,44 +417,6 @@ def _read_session_shared(sid: str) -> dict | None:
         return None
 
 
-def _find_any_valid_session() -> tuple[str | None, dict | None]:
-    """
-    Last-resort: find ANY valid (non-expired) session in the shared table.
-    This handles the "new tab on Cloud" case where we have zero client-side
-    state but the user IS logged in on another tab.
-    
-    We pick the most recently updated session.
-    """
-    try:
-        supabase = get_supabase_client()
-        res = (
-            supabase.table(SESSION_TABLE)
-            .select("sid, data")
-            .order("updated_at", desc=True)
-            .limit(5)
-            .execute()
-        )
-        rows = getattr(res, "data", None) or []
-        now = _now_ts()
-        for row in rows:
-            sid = row.get("sid")
-            data = row.get("data") or {}
-            ts = data.get("_ts", 0)
-            if ts and now - ts > SESSION_TTL_DAYS * 86400:
-                continue
-            at = data.get("access_token")
-            if not at:
-                continue
-            payload = jwt_payload(at) or {}
-            exp = payload.get("exp", 0)
-            # Accept if token is valid OR there's a refresh token
-            if exp > now or data.get("refresh_token"):
-                return (sid, data)
-        return (None, None)
-    except Exception:
-        return (None, None)
-
-
 def _delete_session_shared(sid: str):
     try:
         supabase = get_supabase_client()
@@ -418,7 +455,7 @@ def cleanup_old_sessions(max_age_days: int = SESSION_TTL_DAYS):
 # ─── Auth persistence ────────────────────────────────────────────────────────
 
 def save_auth_to_storage(access_token: str, refresh_token: str, user: dict):
-    """Save auth tokens. Creates shared session + local fallback + cookie."""
+    """Save auth tokens. Creates shared session + local fallback + cookie + localStorage."""
     uid = user.get("id", "unknown")
     sid = hashlib.sha256(uid.encode()).hexdigest()[:32]
 
@@ -430,7 +467,7 @@ def save_auth_to_storage(access_token: str, refresh_token: str, user: dict):
 
 
 def clear_auth_from_storage():
-    """Clear shared session + local fallback + cookie."""
+    """Clear shared session + local fallback + cookie + localStorage."""
     sid = st.session_state.get("_auth_sid") or _get_cookie_sid() or _get_url_sid()
     if sid:
         _delete_session_shared(sid)
@@ -499,29 +536,27 @@ def restore_auth_from_storage() -> bool:
     1. Already in session_state
     2. SID from URL param (?sid=...)
     3. SID from cookie
-    4. Last-resort: find any valid session in Supabase (handles new-tab on Cloud)
+    4. SID from parent-frame localStorage (cross-tab, same-browser, user-scoped)
+    
+    NEVER searches the DB for "any" session — that would break multi-user.
     """
     # 1. Already authenticated in this session
     if st.session_state.get("session") and st.session_state.get("user"):
         _ensure_sid_from_state()
         return False
 
-    # 2. Try SID from URL or cookie
+    # 2. Try SID from URL, cookie, or session_state
     sid = _get_url_sid() or _get_cookie_sid() or st.session_state.get("_auth_sid")
     if sid:
         if _try_restore_from_stored(sid):
             return True
 
-    # 3. Last resort: find any valid session in the shared table
-    # This is the key fix for "new tab on Cloud" — no cookie/URL needed
-    found_sid, found_data = _find_any_valid_session()
-    if found_sid and found_data:
-        at = found_data.get("access_token")
-        rt = found_data.get("refresh_token")
-        user = found_data.get("user")
-        if at and user:
-            if _try_restore_from_stored(found_sid):
-                return True
+    # 3. Try SID from parent-frame localStorage (cross-tab persistence)
+    # This is user-scoped (per browser) unlike the old DB approach
+    ls_sid = _read_sid_from_localstorage()
+    if ls_sid and ls_sid != sid:
+        if _try_restore_from_stored(ls_sid):
+            return True
 
     return False
 
@@ -604,12 +639,14 @@ def bind_auth_from_session() -> tuple[bool, str | None, Client]:
 
 
 # ─── Public API ──────────────────────────────────────────────────────────────
+
 def ensure_sid() -> str | None:
-    """Ensure sid is present in URL and cookie."""
+    """Ensure sid is present in URL, cookie, and localStorage."""
     sid = _ensure_sid_from_state()
     if sid:
         _inject_sid_into_links(sid)
     return sid
+
 
 def get_auth_debug_state() -> dict:
     sid_cookie = _get_cookie_sid()
@@ -627,7 +664,6 @@ def get_auth_debug_state() -> dict:
     stored = _read_session(sid) if sid else None
     stored_user = (stored or {}).get("user") or {}
     stored_at = (stored or {}).get("access_token")
-
     stored_exp = None
     if stored_at:
         stored_exp = (jwt_payload(stored_at) or {}).get("exp")
@@ -672,10 +708,13 @@ def require_auth() -> tuple[bool, str | None, dict | None, Client]:
         ensure_sid()
     return (bind_ok and bool(auth_uid), auth_uid, user, supabase)
 
+
 def sign_out():
     """Sign out and clear all state."""
     st.session_state.pop("session", None)
     st.session_state.pop("user", None)
     st.session_state.pop("supabase_client", None)
     st.session_state.pop("_auth_sid", None)
+    st.session_state.pop("_ls_sid_value", None)
+    st.session_state.pop("_ls_sid_requested", None)
     clear_auth_from_storage()
