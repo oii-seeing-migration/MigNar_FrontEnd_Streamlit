@@ -1,7 +1,6 @@
 # lib/auth.py
 import base64
 import hashlib
-import hmac
 import json
 import os
 import time
@@ -22,7 +21,6 @@ COOKIE_NAME = "mignar_sid"
 # Shared session storage (Supabase)
 SESSION_TABLE = "app_sessions"
 SESSION_TTL_DAYS = 7
-URL_TOKEN_TTL_SECONDS = 7 * 86400
 
 
 def _now_ts() -> float:
@@ -31,52 +29,6 @@ def _now_ts() -> float:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def _b64url_encode(data: bytes) -> str:
-    return base64.urlsafe_b64encode(data).decode("utf-8").rstrip("=")
-
-
-def _get_signing_key() -> str:
-    try:
-        key = st.secrets.get("app", {}).get("auth_signing_key")
-        if key:
-            return str(key)
-    except Exception:
-        pass
-    return str(st.secrets["supabase"]["anon_key"])
-
-
-def _make_auth_token(uid: str, exp: int | None = None) -> str:
-    if not uid:
-        return ""
-    if exp is None:
-        exp = int(_now_ts()) + URL_TOKEN_TTL_SECONDS
-    payload = {"uid": uid, "exp": int(exp)}
-    payload_raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    payload_b64 = _b64url_encode(payload_raw)
-    sig = hmac.new(_get_signing_key().encode("utf-8"), payload_b64.encode("utf-8"), hashlib.sha256).digest()
-    sig_b64 = _b64url_encode(sig)
-    return f"{payload_b64}.{sig_b64}"
-
-
-def _verify_auth_token(token: str) -> dict | None:
-    try:
-        payload_b64, sig_b64 = token.split(".", 1)
-    except Exception:
-        return None
-    expected_sig = hmac.new(_get_signing_key().encode("utf-8"), payload_b64.encode("utf-8"), hashlib.sha256).digest()
-    if not hmac.compare_digest(_b64url_encode(expected_sig), sig_b64):
-        return None
-    try:
-        payload = json.loads(_b64url_decode(payload_b64).decode("utf-8"))
-    except Exception:
-        return None
-    uid = payload.get("uid")
-    exp = int(payload.get("exp", 0))
-    if not uid or exp <= int(_now_ts()):
-        return None
-    return payload
 
 
 # ─── Local session persistence ──────────────────────────────────────────────
@@ -116,7 +68,73 @@ def _delete_session(sid: str):
             pass
 
 
-# ─── Cookie / localStorage helpers ──────────────────────────────────────────
+# ─── Browser fingerprint (server-side, works on Streamlit Cloud) ─────────────
+
+FP_PREFIX = "fp_"
+
+
+def _compute_browser_fp() -> str | None:
+    """
+    Compute a browser fingerprint from HTTP request headers.
+    Uses IP + User-Agent + Accept-Language to identify the same browser
+    across tabs.  Entirely server-side — no JS, no cookies needed.
+    """
+    try:
+        hdrs = st.context.headers
+    except Exception:
+        return None
+
+    ua = hdrs.get("User-Agent") or hdrs.get("user-agent") or ""
+
+    # Real client IP from reverse-proxy headers
+    ip = ""
+    for key in ("X-Forwarded-For", "x-forwarded-for"):
+        val = hdrs.get(key)
+        if val:
+            ip = val.split(",")[0].strip()
+            break
+    if not ip:
+        for key in ("X-Real-Ip", "x-real-ip", "Remote-Addr", "remote-addr"):
+            val = hdrs.get(key)
+            if val:
+                ip = val.strip()
+                break
+
+    lang = hdrs.get("Accept-Language") or hdrs.get("accept-language") or ""
+
+    if not ua and not ip:
+        return None
+
+    raw = f"{ip}|{ua}|{lang}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:32]
+
+
+def _save_fp_mapping(sid: str):
+    """Save browser-fingerprint → SID mapping for cross-tab lookup."""
+    fp = _compute_browser_fp()
+    if fp:
+        _write_session_shared(f"{FP_PREFIX}{fp}", {"real_sid": sid})
+
+
+def _lookup_sid_by_fp() -> str | None:
+    """Look up SID from browser fingerprint."""
+    fp = _compute_browser_fp()
+    if not fp:
+        return None
+    data = _read_session_shared(f"{FP_PREFIX}{fp}")
+    if data:
+        return data.get("real_sid")
+    return None
+
+
+def _clear_fp_mapping():
+    """Delete the fingerprint → SID mapping for this browser."""
+    fp = _compute_browser_fp()
+    if fp:
+        _delete_session_shared(f"{FP_PREFIX}{fp}")
+
+
+# ─── Cookie / localStorage helpers (kept for local / non-Cloud deploys) ──────
 
 def _get_cookie_manager():
     if "_cookie_manager" not in st.session_state:
@@ -324,26 +342,9 @@ def _get_url_sid() -> str | None:
     return val if isinstance(val, str) else None
 
 
-def _get_url_token() -> str | None:
-    try:
-        val = st.query_params.get("st")
-    except Exception:
-        return None
-    if isinstance(val, list):
-        return val[0] if val else None
-    return val if isinstance(val, str) else None
-
-
 def _set_url_sid(sid: str):
     try:
         st.query_params["sid"] = sid
-    except Exception:
-        pass
-
-
-def _set_url_token(token: str):
-    try:
-        st.query_params["st"] = token
     except Exception:
         pass
 
@@ -356,14 +357,6 @@ def _clear_url_sid():
         pass
 
 
-def _clear_url_token():
-    try:
-        if "st" in st.query_params:
-            del st.query_params["st"]
-    except Exception:
-        pass
-
-
 def _inject_sid_into_links(sid: str):
     if not sid or st.session_state.get("_sid_links_injected") == sid:
         return
@@ -372,7 +365,6 @@ def _inject_sid_into_links(sid: str):
     <script>
     (function() {{
       var sid = "{sid}";
-            var stToken = "{_get_url_token() or ''}";
       if (!sid) return;
 
       function appendSid(href) {{
@@ -381,9 +373,6 @@ def _inject_sid_into_links(sid: str):
           if (!url.searchParams.get("sid")) {{
             url.searchParams.set("sid", sid);
           }}
-                    if (stToken && !url.searchParams.get("st")) {{
-                        url.searchParams.set("st", stToken);
-                    }}
           return url.toString();
         }} catch (e) {{
           return href;
@@ -445,10 +434,6 @@ def _ensure_sid_from_state() -> str | None:
             st.session_state["_auth_sid"] = sid
     if sid:
         _set_url_sid(sid)
-        user = st.session_state.get("user") or {}
-        uid = user.get("id")
-        if uid:
-            _set_url_token(_make_auth_token(uid))
         _set_cookie_and_ls(sid)
     return sid
 
@@ -553,28 +538,28 @@ def cleanup_old_sessions(max_age_days: int = SESSION_TTL_DAYS):
 # ─── Auth persistence ────────────────────────────────────────────────────────
 
 def save_auth_to_storage(access_token: str, refresh_token: str, user: dict):
-    """Save auth tokens. Creates shared session + local fallback + cookie + localStorage."""
+    """Save auth tokens. Creates shared session + local fallback + cookie + localStorage + fingerprint."""
     uid = user.get("id", "unknown")
     sid = hashlib.sha256(uid.encode()).hexdigest()[:32]
 
     _persist_session(sid, access_token, refresh_token, user)
+    _save_fp_mapping(sid)
 
     st.session_state["_auth_sid"] = sid
     _set_cookie_and_ls(sid)
     _set_url_sid(sid)
-    _set_url_token(_make_auth_token(uid))
 
 
 def clear_auth_from_storage():
-    """Clear shared session + local fallback + cookie + localStorage."""
+    """Clear shared session + local fallback + cookie + localStorage + fingerprint."""
     sid = st.session_state.get("_auth_sid") or _get_cookie_sid() or _get_url_sid()
     if sid:
         _delete_session_shared(sid)
         _delete_session(sid)
+    _clear_fp_mapping()
     st.session_state.pop("_auth_sid", None)
     _clear_cookie_and_ls()
     _clear_url_sid()
-    _clear_url_token()
 
 
 def _try_restore_from_stored(sid: str) -> bool:
@@ -634,70 +619,41 @@ def restore_auth_from_storage() -> bool:
     """
     Try to restore auth from stored session.
 
-    Strategy (multi-user safe — never scans DB for 'any' session):
-      1. Already in session_state → done
-      2. SID from URL ?sid=  → look up in Supabase/local
-      3. SID from cookie (st.context.cookies) → look up
-      4. If nothing found yet: inject JS to copy localStorage→cookie
-         and trigger ONE rerun so st.context.cookies sees it next time.
+    Strategy (multi-user safe — scoped by browser fingerprint, never
+    scans the DB for "any" session):
 
-    The localStorage bridge works because:
-      - localStorage is per-origin, shared across tabs, user-scoped
-      - We write SID to both cookie and localStorage on login
-      - On a new tab, cookies may not arrive (iframe sandbox) but
-        localStorage is still there; we copy it to a cookie via JS
-        and rerun so the server-side st.context.cookies picks it up.
+      1. Already in session_state → done
+      2. SID from URL  ?sid=…   → look up in Supabase / local file
+      3. SID from cookie         → look up
+      4. SID via browser fingerprint (IP+UA+Lang → Supabase)  ← main
+         mechanism that actually works on Streamlit Cloud
+      5. CookieManager probe rerun (fallback for local deploys)
     """
     # 1. Already authenticated in this session
     if st.session_state.get("session") and st.session_state.get("user"):
         _ensure_sid_from_state()
         return False
 
-    # 2. Try SID from URL or cookie
+    # 2. Try SID from URL or cookie or session_state
     sid = _get_url_sid() or _get_cookie_sid() or st.session_state.get("_auth_sid")
-    if sid:
-        if _try_restore_from_stored(sid):
-            return True
+    if sid and _try_restore_from_stored(sid):
+        return True
 
-    # 3. Try signed URL token (works for external links/new tabs without sid)
-    token = _get_url_token()
-    if token:
-        payload = _verify_auth_token(token)
-        if payload:
-            token_uid = payload.get("uid")
-            token_sid = hashlib.sha256(token_uid.encode()).hexdigest()[:32]
-            if _try_restore_from_stored(token_sid):
-                st.session_state["_auth_sid"] = token_sid
-                _set_url_sid(token_sid)
-                return True
+    # 3. Try browser fingerprint (reliable on Streamlit Cloud — no JS needed)
+    fp_sid = _lookup_sid_by_fp()
+    if fp_sid and _try_restore_from_stored(fp_sid):
+        return True
 
-    # 4. No SID found yet → run one-time CookieManager probe rerun.
-    #    In fresh tabs, cookie component values may appear after first render.
+    # 4. CookieManager probe rerun (may help on localhost / self-hosted)
     if not st.session_state.get("_cookie_probe_rerun_done"):
         _get_cookie_manager()
         st.session_state["_cookie_probe_rerun_done"] = True
         st.rerun()
 
-    # 5. Retry SID from cookie after probe rerun.
+    # 5. Retry cookie after probe rerun
     sid = _get_cookie_sid()
-    if sid:
-        if _try_restore_from_stored(sid):
-            return True
-
-    # 6. Fallback: localStorage-to-cookie bridge + one rerun.
-    if not st.session_state.get("_ls_bridge_rerun_done"):
-        _read_sid_from_localstorage()          # injects JS that copies LS → cookie
-        st.session_state["_ls_bridge_rerun_done"] = True
-        # Give the JS a moment to execute, then rerun
-        time.sleep(0.3)
-        st.rerun()
-        # (execution stops here)
-
-    # 7. After bridge rerun: check cookie again (now might have the LS value)
-    sid = _get_cookie_sid()
-    if sid:
-        if _try_restore_from_stored(sid):
-            return True
+    if sid and _try_restore_from_stored(sid):
+        return True
 
     return False
 
@@ -793,8 +749,6 @@ def get_auth_debug_state() -> dict:
     sid_cookie = _get_cookie_sid()
     sid_state = st.session_state.get("_auth_sid")
     sid_url = _get_url_sid()
-    st_token = _get_url_token()
-    st_payload = _verify_auth_token(st_token) if st_token else None
     sid = sid_state or sid_cookie or sid_url
 
     shared = _read_session_shared(sid) if sid else None
@@ -817,17 +771,17 @@ def get_auth_debug_state() -> dict:
     if sess_at:
         sess_exp = (jwt_payload(sess_at) or {}).get("exp")
 
+    fp = _compute_browser_fp()
+    fp_sid = _lookup_sid_by_fp() if fp else None
+
     return {
         "cookie_sid": sid_cookie,
         "url_sid": sid_url,
-        "url_st_present": bool(st_token),
-        "url_st_valid": bool(st_payload),
-        "url_st_uid": (st_payload or {}).get("uid"),
         "session_sid": sid_state,
         "active_sid": sid,
+        "browser_fp": (fp[:8] + "…") if fp else None,
+        "fp_lookup_sid": fp_sid,
         "cookie_probe_rerun_done": st.session_state.get("_cookie_probe_rerun_done", False),
-        "ls_bridge_done": st.session_state.get("_ls_bridge_done", False),
-        "ls_bridge_rerun_done": st.session_state.get("_ls_bridge_rerun_done", False),
         "session_shared_exists": bool(shared),
         "session_shared_ts": (shared or {}).get("_ts"),
         "shared_user_id": shared_user.get("id"),
@@ -860,6 +814,7 @@ def require_auth() -> tuple[bool, str | None, dict | None, Client]:
 
 def sign_out():
     """Sign out and clear all state."""
+    _clear_fp_mapping()
     st.session_state.pop("session", None)
     st.session_state.pop("user", None)
     st.session_state.pop("supabase_client", None)
