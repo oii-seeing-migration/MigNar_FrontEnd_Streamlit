@@ -76,36 +76,37 @@ FP_PREFIX = "fp_"
 def _compute_browser_fp() -> str | None:
     """
     Compute a browser fingerprint from HTTP request headers.
-    Uses IP + User-Agent + Accept-Language to identify the same browser
-    across tabs.  Entirely server-side — no JS, no cookies needed.
+
+    Uses **only browser-intrinsic headers** that are identical across
+    tabs in the same browser but differ between browsers / machines:
+      - User-Agent  (browser version + OS)
+      - Accept-Language  (user language prefs)
+      - Sec-Ch-Ua*  (Chrome client-hints: exact build, platform, mobile)
+
+    IP is deliberately excluded because Streamlit Cloud's load-balancer
+    assigns a different X-Forwarded-For per WebSocket / tab.
     """
     try:
         hdrs = st.context.headers
     except Exception:
         return None
 
-    ua = hdrs.get("User-Agent") or hdrs.get("user-agent") or ""
-
-    # Real client IP from reverse-proxy headers
-    ip = ""
-    for key in ("X-Forwarded-For", "x-forwarded-for"):
+    parts = []
+    for key in (
+        "User-Agent", "user-agent",
+        "Accept-Language", "accept-language",
+        "Sec-Ch-Ua", "sec-ch-ua",
+        "Sec-Ch-Ua-Platform", "sec-ch-ua-platform",
+        "Sec-Ch-Ua-Mobile", "sec-ch-ua-mobile",
+    ):
         val = hdrs.get(key)
         if val:
-            ip = val.split(",")[0].strip()
-            break
-    if not ip:
-        for key in ("X-Real-Ip", "x-real-ip", "Remote-Addr", "remote-addr"):
-            val = hdrs.get(key)
-            if val:
-                ip = val.strip()
-                break
+            parts.append(val)
 
-    lang = hdrs.get("Accept-Language") or hdrs.get("accept-language") or ""
-
-    if not ua and not ip:
+    if not parts:
         return None
 
-    raw = f"{ip}|{ua}|{lang}"
+    raw = "|".join(parts)
     return hashlib.sha256(raw.encode()).hexdigest()[:32]
 
 
