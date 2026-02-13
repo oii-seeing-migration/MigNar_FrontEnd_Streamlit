@@ -1,6 +1,7 @@
 # lib/auth.py
 import base64
 import hashlib
+import hmac
 import json
 import os
 import time
@@ -21,6 +22,7 @@ COOKIE_NAME = "mignar_sid"
 # Shared session storage (Supabase)
 SESSION_TABLE = "app_sessions"
 SESSION_TTL_DAYS = 7
+URL_TOKEN_TTL_SECONDS = 7 * 86400
 
 
 def _now_ts() -> float:
@@ -29,6 +31,52 @@ def _now_ts() -> float:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _b64url_encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode("utf-8").rstrip("=")
+
+
+def _get_signing_key() -> str:
+    try:
+        key = st.secrets.get("app", {}).get("auth_signing_key")
+        if key:
+            return str(key)
+    except Exception:
+        pass
+    return str(st.secrets["supabase"]["anon_key"])
+
+
+def _make_auth_token(uid: str, exp: int | None = None) -> str:
+    if not uid:
+        return ""
+    if exp is None:
+        exp = int(_now_ts()) + URL_TOKEN_TTL_SECONDS
+    payload = {"uid": uid, "exp": int(exp)}
+    payload_raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    payload_b64 = _b64url_encode(payload_raw)
+    sig = hmac.new(_get_signing_key().encode("utf-8"), payload_b64.encode("utf-8"), hashlib.sha256).digest()
+    sig_b64 = _b64url_encode(sig)
+    return f"{payload_b64}.{sig_b64}"
+
+
+def _verify_auth_token(token: str) -> dict | None:
+    try:
+        payload_b64, sig_b64 = token.split(".", 1)
+    except Exception:
+        return None
+    expected_sig = hmac.new(_get_signing_key().encode("utf-8"), payload_b64.encode("utf-8"), hashlib.sha256).digest()
+    if not hmac.compare_digest(_b64url_encode(expected_sig), sig_b64):
+        return None
+    try:
+        payload = json.loads(_b64url_decode(payload_b64).decode("utf-8"))
+    except Exception:
+        return None
+    uid = payload.get("uid")
+    exp = int(payload.get("exp", 0))
+    if not uid or exp <= int(_now_ts()):
+        return None
+    return payload
 
 
 # ─── Local session persistence ──────────────────────────────────────────────
@@ -276,9 +324,26 @@ def _get_url_sid() -> str | None:
     return val if isinstance(val, str) else None
 
 
+def _get_url_token() -> str | None:
+    try:
+        val = st.query_params.get("st")
+    except Exception:
+        return None
+    if isinstance(val, list):
+        return val[0] if val else None
+    return val if isinstance(val, str) else None
+
+
 def _set_url_sid(sid: str):
     try:
         st.query_params["sid"] = sid
+    except Exception:
+        pass
+
+
+def _set_url_token(token: str):
+    try:
+        st.query_params["st"] = token
     except Exception:
         pass
 
@@ -291,6 +356,14 @@ def _clear_url_sid():
         pass
 
 
+def _clear_url_token():
+    try:
+        if "st" in st.query_params:
+            del st.query_params["st"]
+    except Exception:
+        pass
+
+
 def _inject_sid_into_links(sid: str):
     if not sid or st.session_state.get("_sid_links_injected") == sid:
         return
@@ -299,6 +372,7 @@ def _inject_sid_into_links(sid: str):
     <script>
     (function() {{
       var sid = "{sid}";
+            var stToken = "{_get_url_token() or ''}";
       if (!sid) return;
 
       function appendSid(href) {{
@@ -307,6 +381,9 @@ def _inject_sid_into_links(sid: str):
           if (!url.searchParams.get("sid")) {{
             url.searchParams.set("sid", sid);
           }}
+                    if (stToken && !url.searchParams.get("st")) {{
+                        url.searchParams.set("st", stToken);
+                    }}
           return url.toString();
         }} catch (e) {{
           return href;
@@ -368,6 +445,10 @@ def _ensure_sid_from_state() -> str | None:
             st.session_state["_auth_sid"] = sid
     if sid:
         _set_url_sid(sid)
+        user = st.session_state.get("user") or {}
+        uid = user.get("id")
+        if uid:
+            _set_url_token(_make_auth_token(uid))
         _set_cookie_and_ls(sid)
     return sid
 
@@ -481,6 +562,7 @@ def save_auth_to_storage(access_token: str, refresh_token: str, user: dict):
     st.session_state["_auth_sid"] = sid
     _set_cookie_and_ls(sid)
     _set_url_sid(sid)
+    _set_url_token(_make_auth_token(uid))
 
 
 def clear_auth_from_storage():
@@ -492,6 +574,7 @@ def clear_auth_from_storage():
     st.session_state.pop("_auth_sid", None)
     _clear_cookie_and_ls()
     _clear_url_sid()
+    _clear_url_token()
 
 
 def _try_restore_from_stored(sid: str) -> bool:
@@ -576,20 +659,32 @@ def restore_auth_from_storage() -> bool:
         if _try_restore_from_stored(sid):
             return True
 
-    # 3. No SID found yet → run one-time CookieManager probe rerun.
+    # 3. Try signed URL token (works for external links/new tabs without sid)
+    token = _get_url_token()
+    if token:
+        payload = _verify_auth_token(token)
+        if payload:
+            token_uid = payload.get("uid")
+            token_sid = hashlib.sha256(token_uid.encode()).hexdigest()[:32]
+            if _try_restore_from_stored(token_sid):
+                st.session_state["_auth_sid"] = token_sid
+                _set_url_sid(token_sid)
+                return True
+
+    # 4. No SID found yet → run one-time CookieManager probe rerun.
     #    In fresh tabs, cookie component values may appear after first render.
     if not st.session_state.get("_cookie_probe_rerun_done"):
         _get_cookie_manager()
         st.session_state["_cookie_probe_rerun_done"] = True
         st.rerun()
 
-    # 4. Retry SID from cookie after probe rerun.
+    # 5. Retry SID from cookie after probe rerun.
     sid = _get_cookie_sid()
     if sid:
         if _try_restore_from_stored(sid):
             return True
 
-    # 5. Fallback: localStorage-to-cookie bridge + one rerun.
+    # 6. Fallback: localStorage-to-cookie bridge + one rerun.
     if not st.session_state.get("_ls_bridge_rerun_done"):
         _read_sid_from_localstorage()          # injects JS that copies LS → cookie
         st.session_state["_ls_bridge_rerun_done"] = True
@@ -598,7 +693,7 @@ def restore_auth_from_storage() -> bool:
         st.rerun()
         # (execution stops here)
 
-    # 6. After bridge rerun: check cookie again (now might have the LS value)
+    # 7. After bridge rerun: check cookie again (now might have the LS value)
     sid = _get_cookie_sid()
     if sid:
         if _try_restore_from_stored(sid):
@@ -698,6 +793,8 @@ def get_auth_debug_state() -> dict:
     sid_cookie = _get_cookie_sid()
     sid_state = st.session_state.get("_auth_sid")
     sid_url = _get_url_sid()
+    st_token = _get_url_token()
+    st_payload = _verify_auth_token(st_token) if st_token else None
     sid = sid_state or sid_cookie or sid_url
 
     shared = _read_session_shared(sid) if sid else None
@@ -723,6 +820,9 @@ def get_auth_debug_state() -> dict:
     return {
         "cookie_sid": sid_cookie,
         "url_sid": sid_url,
+        "url_st_present": bool(st_token),
+        "url_st_valid": bool(st_payload),
+        "url_st_uid": (st_payload or {}).get("uid"),
         "session_sid": sid_state,
         "active_sid": sid,
         "cookie_probe_rerun_done": st.session_state.get("_cookie_probe_rerun_done", False),
