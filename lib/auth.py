@@ -68,20 +68,10 @@ def _delete_session(sid: str):
             pass
 
 
-# ─── Cookie / localStorage session ID ───────────────────────────────────────
-
-def _get_cookie_manager():
-    if "_cookie_manager" not in st.session_state:
-        try:
-            import extra_streamlit_components as stx
-        except Exception:
-            return None
-        st.session_state["_cookie_manager"] = stx.CookieManager()
-    return st.session_state["_cookie_manager"]
-
+# ─── Cookie / localStorage helpers ──────────────────────────────────────────
 
 def _get_cookie_sid() -> str | None:
-    """Read session ID from browser cookie."""
+    """Read session ID from browser cookie (HTTP headers)."""
     try:
         cookies = st.context.cookies
         val = cookies.get(COOKIE_NAME)
@@ -89,32 +79,47 @@ def _get_cookie_sid() -> str | None:
             return val
     except Exception:
         pass
-
-    mgr = _get_cookie_manager()
-    if not mgr:
-        return None
-    try:
-        return mgr.get(COOKIE_NAME)
-    except Exception:
-        return None
+    return None
 
 
-def _set_cookie_sid(sid: str):
-    """Set session ID cookie + parent-frame localStorage (cross-tab persistence)."""
+def _set_cookie_and_ls(sid: str):
+    """
+    Set session ID in both cookie and localStorage on the parent frame.
+    
+    Key fixes for Streamlit Cloud:
+    - Force Secure + SameSite=None for HTTPS (detect via parent frame, not srcdoc)
+    - Write to parent frame's document.cookie AND localStorage
+    - localStorage is the primary cross-tab mechanism (cookies may be blocked)
+    """
     js = f"""
     <script>
     (function() {{
       var sid = "{sid}";
       var cookieName = "{COOKIE_NAME}";
+      var maxAge = {7 * 86400};
 
+      // Detect HTTPS from parent frame (srcdoc has protocol "about:")
+      var isHttps = false;
+      try {{ isHttps = window.parent.location.protocol === "https:"; }} catch(e) {{}}
+      if (!isHttps) {{
+        try {{ isHttps = window.top.location.protocol === "https:"; }} catch(e) {{}}
+      }}
+      if (!isHttps) {{
+        // Fallback: assume HTTPS on *.streamlit.app
+        try {{
+          var host = window.parent.location.hostname || "";
+          if (host.indexOf("streamlit.app") !== -1 || host.indexOf("streamlit.io") !== -1) isHttps = true;
+        }} catch(e) {{}}
+      }}
+
+      var sameSite = isHttps ? "None" : "Lax";
+      var secure   = isHttps ? "; Secure" : "";
+      var cookieVal = cookieName + "=" + sid + "; path=/; max-age=" + maxAge + "; SameSite=" + sameSite + secure;
+
+      // Set cookie on all reachable frames
       var frames = [window];
       try {{ if (window.parent && window.parent !== window) frames.push(window.parent); }} catch(e) {{}}
       try {{ if (window.top && window.top !== window && window.top !== window.parent) frames.push(window.top); }} catch(e) {{}}
-
-      var isHttps = window.location.protocol === "https:";
-      var sameSite = isHttps ? "None" : "Lax";
-      var secure = isHttps ? "; Secure" : "";
-      var cookieVal = cookieName + "=" + sid + "; path=/; max-age={7*86400}; SameSite=" + sameSite + secure;
 
       for (var i = 0; i < frames.length; i++) {{
         try {{ frames[i].document.cookie = cookieVal; }} catch(e) {{}}
@@ -125,31 +130,33 @@ def _set_cookie_sid(sid: str):
     """
     components.html(js, height=0, width=0)
 
-    mgr = _get_cookie_manager()
-    if mgr:
-        try:
-            mgr.set(COOKIE_NAME, sid, max_age=7 * 86400, path="/", same_site="None", secure=True)
-        except Exception:
-            try:
-                mgr.set(COOKIE_NAME, sid, max_age=7 * 86400, path="/", same_site="Lax")
-            except Exception:
-                pass
 
-
-def _clear_cookie_sid():
-    """Clear session ID cookie + localStorage."""
+def _clear_cookie_and_ls():
+    """Clear session ID cookie + localStorage on all reachable frames."""
     js = f"""
     <script>
     (function() {{
       var cookieName = "{COOKIE_NAME}";
+
+      var isHttps = false;
+      try {{ isHttps = window.parent.location.protocol === "https:"; }} catch(e) {{}}
+      if (!isHttps) {{
+        try {{ isHttps = window.top.location.protocol === "https:"; }} catch(e) {{}}
+      }}
+      if (!isHttps) {{
+        try {{
+          var host = window.parent.location.hostname || "";
+          if (host.indexOf("streamlit.app") !== -1 || host.indexOf("streamlit.io") !== -1) isHttps = true;
+        }} catch(e) {{}}
+      }}
+
+      var sameSite = isHttps ? "None" : "Lax";
+      var secure   = isHttps ? "; Secure" : "";
+      var cookieVal = cookieName + "=; path=/; max-age=0; SameSite=" + sameSite + secure;
+
       var frames = [window];
       try {{ if (window.parent && window.parent !== window) frames.push(window.parent); }} catch(e) {{}}
       try {{ if (window.top && window.top !== window && window.top !== window.parent) frames.push(window.top); }} catch(e) {{}}
-
-      var isHttps = window.location.protocol === "https:";
-      var sameSite = isHttps ? "None" : "Lax";
-      var secure = isHttps ? "; Secure" : "";
-      var cookieVal = cookieName + "=; path=/; max-age=0; SameSite=" + sameSite + secure;
 
       for (var i = 0; i < frames.length; i++) {{
         try {{ frames[i].document.cookie = cookieVal; }} catch(e) {{}}
@@ -160,90 +167,65 @@ def _clear_cookie_sid():
     """
     components.html(js, height=0, width=0)
 
-    mgr = _get_cookie_manager()
-    if mgr:
-        try:
-            mgr.delete(COOKIE_NAME)
-        except Exception:
-            pass
-
 
 def _read_sid_from_localstorage() -> str | None:
     """
-    Read sid from parent-frame localStorage via a hidden component.
-    This is the key mechanism for cross-tab session on Streamlit Cloud:
-    localStorage is per-origin and shared across tabs in the same browser,
-    so it's user-scoped (unlike the DB which is shared across all users).
-    
-    Returns the sid if found, or None.
-    Uses a Streamlit component that posts the value back.
+    Inject JS that reads localStorage and, if a SID is found, writes it
+    back into a cookie on document.cookie so that st.context.cookies can
+    pick it up on the NEXT rerun.
+
+    Returns None always — the value is delivered asynchronously via cookie,
+    so the caller must trigger a rerun and re-check st.context.cookies.
     """
-    # Check if we already retrieved it this run
-    if "_ls_sid_value" in st.session_state:
-        return st.session_state["_ls_sid_value"]
+    if st.session_state.get("_ls_bridge_done"):
+        return None
 
-    # We use a two-phase approach:
-    # Phase 1: Inject JS that reads localStorage and stores in a hidden input
-    # Phase 2: Read the value on next rerun via query params
-    
-    # Check if the value was posted back via query params
-    try:
-        ls_sid = st.query_params.get("_ls_sid")
-        if isinstance(ls_sid, list):
-            ls_sid = ls_sid[0] if ls_sid else None
-        if ls_sid and ls_sid != "none":
-            st.session_state["_ls_sid_value"] = ls_sid
-            # Clean up the param
-            try:
-                del st.query_params["_ls_sid"]
-            except Exception:
-                pass
-            return ls_sid
-    except Exception:
-        pass
+    # Inject JS: read localStorage → write to document.cookie → force rerun
+    js = f"""
+    <script>
+    (function() {{
+      var cookieName = "{COOKIE_NAME}";
+      var sid = null;
 
-    # Inject JS to read localStorage and redirect with the value
-    # Only do this once per session to avoid redirect loops
-    if not st.session_state.get("_ls_sid_requested"):
-        st.session_state["_ls_sid_requested"] = True
-        js = f"""
-        <script>
-        (function() {{
-          var cookieName = "{COOKIE_NAME}";
-          var sid = null;
-          
-          // Try reading from localStorage in parent frames
-          var frames = [window];
-          try {{ if (window.parent && window.parent !== window) frames.push(window.parent); }} catch(e) {{}}
-          try {{ if (window.top && window.top !== window && window.top !== window.parent) frames.push(window.top); }} catch(e) {{}}
-          
-          for (var i = 0; i < frames.length; i++) {{
-            try {{
-              var val = frames[i].localStorage.getItem(cookieName);
-              if (val) {{ sid = val; break; }}
-            }} catch(e) {{}}
-          }}
-          
-          if (sid) {{
-            // Post back to Streamlit via query param
-            var url = new URL(window.location.href);
-            if (!url.searchParams.get("_ls_sid")) {{
-              url.searchParams.set("_ls_sid", sid);
-              // Navigate the parent frame to trigger rerun
-              try {{
-                window.parent.location.href = url.toString();
-              }} catch(e) {{
-                try {{
-                  window.location.href = url.toString();
-                }} catch(e2) {{}}
-              }}
-            }}
-          }}
-        }})();
-        </script>
-        """
-        components.html(js, height=0, width=0)
+      // Try reading from localStorage in parent frames
+      var frames = [window];
+      try {{ if (window.parent && window.parent !== window) frames.push(window.parent); }} catch(e) {{}}
+      try {{ if (window.top && window.top !== window && window.top !== window.parent) frames.push(window.top); }} catch(e) {{}}
 
+      for (var i = 0; i < frames.length; i++) {{
+        try {{
+          var val = frames[i].localStorage.getItem(cookieName);
+          if (val) {{ sid = val; break; }}
+        }} catch(e) {{}}
+      }}
+
+      if (sid) {{
+        // Write it as a cookie on all reachable frames so st.context.cookies sees it
+        var isHttps = false;
+        try {{ isHttps = window.parent.location.protocol === "https:"; }} catch(e) {{}}
+        if (!isHttps) {{
+          try {{ isHttps = window.top.location.protocol === "https:"; }} catch(e) {{}}
+        }}
+        if (!isHttps) {{
+          try {{
+            var host = window.parent.location.hostname || "";
+            if (host.indexOf("streamlit.app") !== -1 || host.indexOf("streamlit.io") !== -1) isHttps = true;
+          }} catch(e) {{}}
+        }}
+
+        var sameSite = isHttps ? "None" : "Lax";
+        var secure   = isHttps ? "; Secure" : "";
+        var cookieVal = cookieName + "=" + sid + "; path=/; max-age={7 * 86400}; SameSite=" + sameSite + secure;
+
+        for (var i = 0; i < frames.length; i++) {{
+          try {{ frames[i].document.cookie = cookieVal; }} catch(e) {{}}
+        }}
+      }}
+    }})();
+    </script>
+    """
+    components.html(js, height=0, width=0)
+    st.session_state["_ls_bridge_done"] = True
     return None
 
 
@@ -351,7 +333,7 @@ def _ensure_sid_from_state() -> str | None:
             st.session_state["_auth_sid"] = sid
     if sid:
         _set_url_sid(sid)
-        _set_cookie_sid(sid)
+        _set_cookie_and_ls(sid)
     return sid
 
 
@@ -462,7 +444,7 @@ def save_auth_to_storage(access_token: str, refresh_token: str, user: dict):
     _persist_session(sid, access_token, refresh_token, user)
 
     st.session_state["_auth_sid"] = sid
-    _set_cookie_sid(sid)
+    _set_cookie_and_ls(sid)
     _set_url_sid(sid)
 
 
@@ -473,7 +455,7 @@ def clear_auth_from_storage():
         _delete_session_shared(sid)
         _delete_session(sid)
     st.session_state.pop("_auth_sid", None)
-    _clear_cookie_sid()
+    _clear_cookie_and_ls()
     _clear_url_sid()
 
 
@@ -525,37 +507,54 @@ def _try_restore_from_stored(sid: str) -> bool:
         except Exception:
             _delete_session_shared(sid)
             _delete_session(sid)
-            _clear_cookie_sid()
+            _clear_cookie_and_ls()
 
     return False
 
 
 def restore_auth_from_storage() -> bool:
     """
-    Try to restore auth. Checks (in order):
-    1. Already in session_state
-    2. SID from URL param (?sid=...)
-    3. SID from cookie
-    4. SID from parent-frame localStorage (cross-tab, same-browser, user-scoped)
-    
-    NEVER searches the DB for "any" session — that would break multi-user.
+    Try to restore auth from stored session.
+
+    Strategy (multi-user safe — never scans DB for 'any' session):
+      1. Already in session_state → done
+      2. SID from URL ?sid=  → look up in Supabase/local
+      3. SID from cookie (st.context.cookies) → look up
+      4. If nothing found yet: inject JS to copy localStorage→cookie
+         and trigger ONE rerun so st.context.cookies sees it next time.
+
+    The localStorage bridge works because:
+      - localStorage is per-origin, shared across tabs, user-scoped
+      - We write SID to both cookie and localStorage on login
+      - On a new tab, cookies may not arrive (iframe sandbox) but
+        localStorage is still there; we copy it to a cookie via JS
+        and rerun so the server-side st.context.cookies picks it up.
     """
     # 1. Already authenticated in this session
     if st.session_state.get("session") and st.session_state.get("user"):
         _ensure_sid_from_state()
         return False
 
-    # 2. Try SID from URL, cookie, or session_state
+    # 2. Try SID from URL or cookie
     sid = _get_url_sid() or _get_cookie_sid() or st.session_state.get("_auth_sid")
     if sid:
         if _try_restore_from_stored(sid):
             return True
 
-    # 3. Try SID from parent-frame localStorage (cross-tab persistence)
-    # This is user-scoped (per browser) unlike the old DB approach
-    ls_sid = _read_sid_from_localstorage()
-    if ls_sid and ls_sid != sid:
-        if _try_restore_from_stored(ls_sid):
+    # 3. No SID found yet → inject the localStorage-to-cookie bridge
+    #    and rerun ONCE to let the cookie propagate.
+    if not st.session_state.get("_ls_bridge_rerun_done"):
+        _read_sid_from_localstorage()          # injects JS that copies LS → cookie
+        st.session_state["_ls_bridge_rerun_done"] = True
+        # Give the JS a moment to execute, then rerun
+        time.sleep(0.3)
+        st.rerun()
+        # (execution stops here)
+
+    # 4. After rerun: check cookie again (now might have the LS value)
+    sid = _get_cookie_sid()
+    if sid:
+        if _try_restore_from_stored(sid):
             return True
 
     return False
@@ -679,6 +678,8 @@ def get_auth_debug_state() -> dict:
         "url_sid": sid_url,
         "session_sid": sid_state,
         "active_sid": sid,
+        "ls_bridge_done": st.session_state.get("_ls_bridge_done", False),
+        "ls_bridge_rerun_done": st.session_state.get("_ls_bridge_rerun_done", False),
         "session_shared_exists": bool(shared),
         "session_shared_ts": (shared or {}).get("_ts"),
         "shared_user_id": shared_user.get("id"),
@@ -715,6 +716,6 @@ def sign_out():
     st.session_state.pop("user", None)
     st.session_state.pop("supabase_client", None)
     st.session_state.pop("_auth_sid", None)
-    st.session_state.pop("_ls_sid_value", None)
-    st.session_state.pop("_ls_sid_requested", None)
+    st.session_state.pop("_ls_bridge_done", None)
+    st.session_state.pop("_ls_bridge_rerun_done", None)
     clear_auth_from_storage()
