@@ -67,6 +67,36 @@ stance_df = by_model(stance_df)
 themes_df = by_model(themes_df)
 meso_df = by_model(meso_df)
 
+available_versions = sorted(set(
+    list(pd.to_numeric(themes_df["version"], errors="coerce").dropna().astype(int).unique().tolist())
+    if ("version" in themes_df.columns and not themes_df.empty) else []
+    +
+    list(pd.to_numeric(meso_df["version"], errors="coerce").dropna().astype(int).unique().tolist())
+    if ("version" in meso_df.columns and not meso_df.empty) else []
+))
+
+if available_versions:
+    version_options = ["(All versions)"] + available_versions
+    selected_version = st.sidebar.selectbox(
+        "Taxonomy Version",
+        options=version_options,
+        index=len(version_options) - 1,  # default to latest version
+    )
+else:
+    selected_version = "(All versions)"
+
+def by_version(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty or selected_version == "(All versions)" or "version" not in df.columns:
+        return df
+    v = pd.to_numeric(df["version"], errors="coerce")
+    return df[v == int(selected_version)].copy()
+
+# Apply version filter ONLY to themes/meso
+themes_df = by_version(themes_df)
+meso_df = by_version(meso_df)
+
+
+
 # Date range bounds from filtered-by-model data
 date_cols = []
 for df in (stance_df, themes_df, meso_df):

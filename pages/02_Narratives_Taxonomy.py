@@ -283,7 +283,7 @@ elif USER:
 else:
     st.sidebar.warning("🔐 Not signed in. [Go to Sign In page](/) to annotate.")
 
-chosen_rev = st.sidebar.selectbox("Revision Version", revs, index=len(revs)-1)
+chosen_rev = st.sidebar.selectbox("Taxonomy Revision Version", revs, 1)#, index=len(revs)-1)
 taxonomy = load_taxonomy(chosen_rev)
 
 # Build stable numbering based on taxonomy (not affected by filters)
