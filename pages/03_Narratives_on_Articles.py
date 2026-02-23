@@ -1139,6 +1139,7 @@ if save_clicked and is_logged_in:
 
     if ok > 0 and fail == 0:
         st.success(f"✅ Saved {ok} validation(s) successfully!")
+        st.session_state["validations_saved_notice"] = ok
         st.rerun()
     elif ok > 0:
         st.warning(f"⚠️ Saved {ok}, failed {fail}")
@@ -1151,4 +1152,10 @@ if save_clicked and is_logged_in:
 # Footer
 # ═══════════════════════════════════════════════════════════════════════════════
 st.markdown("---")
+
+saved_notice_count = st.session_state.pop("validations_saved_notice", None)
+if saved_notice_count:
+    st.caption(f"✅ Your validations were saved after clicking the save button ({saved_notice_count} item(s)).")
+
+
 st.caption(f"Article ID: {article_id} | Source: {source_table}")

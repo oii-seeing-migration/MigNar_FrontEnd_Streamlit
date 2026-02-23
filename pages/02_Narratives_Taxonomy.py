@@ -172,9 +172,19 @@ def load_taxonomy(revision: int) -> dict[str, list[str]]:
     if not isinstance(data, dict):
         return {}
     out = {}
+    # Revision 2 stores meso items as [text, stance].
+    # Convert back to plain text list so the page works with the original schema.
     for k, v in data.items():
         if isinstance(v, (list, tuple)):
-            out[str(k)] = [str(x) for x in v if isinstance(x, str)]
+            clean_items: list[str] = []
+            for x in v:
+                if isinstance(x, str):
+                    clean_items.append(x)
+                elif revision >= 2 and isinstance(x, (list, tuple)) and len(x) >= 1:
+                    text = x[0]
+                    if isinstance(text, str):
+                        clean_items.append(text)
+            out[str(k)] = clean_items
     return out
 
 @st.cache_data(show_spinner=True, ttl="30m", max_entries=1)
@@ -283,7 +293,7 @@ elif USER:
 else:
     st.sidebar.warning("🔐 Not signed in. [Go to Sign In page](/) to annotate.")
 
-chosen_rev = st.sidebar.selectbox("Taxonomy Revision Version", revs, 1)#, index=len(revs)-1)
+chosen_rev = st.sidebar.selectbox("Taxonomy Revision Version", revs, index=len(revs)-1)#, index=len(revs)-1)
 taxonomy = load_taxonomy(chosen_rev)
 
 # Build stable numbering based on taxonomy (not affected by filters)
