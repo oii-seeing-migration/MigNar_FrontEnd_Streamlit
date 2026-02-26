@@ -170,7 +170,7 @@ stance_p = add_period(stance_f, freq_label)
 themes_p = add_period(themes_f, freq_label)
 meso_p   = add_period(meso_f, freq_label)
 
-
+st.sidebar.markdown("---")
 
 available_versions = sorted(set(
     list(pd.to_numeric(themes_df["version"], errors="coerce").dropna().astype(int).unique().tolist())
@@ -195,6 +195,7 @@ def by_version(df: pd.DataFrame) -> pd.DataFrame:
         return df
     v = pd.to_numeric(df["version"], errors="coerce")
     return df[v == int(selected_version)].copy()
+
 
 # Apply version filter ONLY to themes/meso
 themes_p = by_version(themes_p)

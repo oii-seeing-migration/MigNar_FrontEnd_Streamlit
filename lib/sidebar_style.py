@@ -39,12 +39,12 @@ def apply_sidebar_names():
             visibility: visible;
         }
         
-        /* 7. Contrastive Dashboard */
+        /* 7. Comparative Dashboard */
         [data-testid="stSidebarNav"] li:nth-child(7) span {
             visibility: hidden;
         }
         [data-testid="stSidebarNav"] li:nth-child(7) span::before {
-            content: "⚖️ 𝗗𝗮𝘀𝗵𝗯𝗼𝗮𝗿𝗱: Contrastive";
+            content: "⚖️ 𝗗𝗮𝘀𝗵𝗯𝗼𝗮𝗿𝗱: Comparative";
             visibility: visible;
         }
         

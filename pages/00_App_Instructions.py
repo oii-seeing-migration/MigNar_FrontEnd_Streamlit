@@ -96,7 +96,7 @@ st.markdown("""
 4. View the bar charts showing top themes and meso narratives by article count
 """)
 
-st.subheader("⚖️ Contrastive Dashboard")
+st.subheader("⚖️ Comparative Dashboard")
 st.markdown("""
 **Purpose**: Compare how narratives differ across different categories (e.g., news sources, stances, time periods).
 
@@ -300,7 +300,7 @@ st.markdown("""
 - **Narratives Taxonomy**: Review and annotate narrative quality
 - **Narratives on Articles**: Explore individual articles and their extracted narratives
 - **Aggregative Dashboard**: View overall narrative distribution
-- **Contrastive Dashboard**: Compare narratives across categories
+- **Comparative Dashboard**: Compare narratives across categories
 - **Temporal Dashboard**: Track narrative trends over time
 
 ### 📧 Support

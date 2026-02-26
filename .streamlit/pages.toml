@@ -19,8 +19,8 @@ name = "Aggregative Dashboard"
 icon = "📊"
 
 [[pages]]
-path = "pages/03_Contrastive_Dashboard.py"
-name = "Contrastive Dashboard"
+path = "pages/03_Comparative_Dashboard.py"
+name = "Comparative Dashboard"
 icon = "⚖️"
 
 [[pages]]

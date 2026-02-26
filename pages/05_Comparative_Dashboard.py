@@ -4,7 +4,7 @@ import altair as alt
 import pandas as pd
 from datetime import date
 
-st.set_page_config(page_title="Contrastive Dashboard",
+st.set_page_config(page_title="Comparative Dashboard",
                    layout="wide",
                    page_icon=".streamlit/static/MigNar_icon.png")
 
@@ -12,7 +12,7 @@ from lib.sidebar_style import apply_sidebar_names
 apply_sidebar_names()
 
 
-st.title("Contrastive Dashboard")
+st.title("Comparative Dashboard")
 
 # ------------------------------------------------------------
 # UK Media Outlet Groups (for default selection)
@@ -93,7 +93,7 @@ def by_version(df: pd.DataFrame) -> pd.DataFrame:
 themes_df = by_version(themes_df)
 meso_df = by_version(meso_df)
 
-
+st.sidebar.markdown("---")
 
 
 # ------------------------------------------------------------
