@@ -95,7 +95,12 @@ default_model = "Ensemble" if "Ensemble" in models else (models[0] if models els
 if not models:
     st.error("No models found in aggregates.")
     st.stop()
-selected_model = st.sidebar.selectbox("Model", options=models, index=models.index(default_model) if default_model in models else 0)
+selected_model = st.sidebar.selectbox(
+    "Model",
+    options=models,
+    index=models.index(default_model) if default_model in models else 0,
+    help="Filters all temporal series to a single model. 'Ensemble' uses consensus outputs.",
+)
 
 # Date bounds across selected model
 def model_filter(df):
@@ -127,10 +132,21 @@ else:
     st.stop()
 
 # Granularity
-freq_label = st.sidebar.selectbox("Granularity", ["Monthly", "Yearly"], index=1)
+freq_label = st.sidebar.selectbox(
+    "Granularity",
+    ["Monthly", "Yearly"],
+    index=1,
+    help="Controls temporal aggregation of lines. Monthly shows finer variation; Yearly shows long-run trends.",
+)
 
 # Date picker
-picked = st.sidebar.date_input("Date range", value=(date(2000, 1, 1), max_dt), min_value=min_dt, max_value=max_dt)
+picked = st.sidebar.date_input(
+    "Date range",
+    value=(date(2000, 1, 1), max_dt),
+    min_value=min_dt,
+    max_value=max_dt,
+    help="Limits all temporal series to periods whose month lies inside this interval.",
+)
 if isinstance(picked, tuple) and len(picked) == 2:
     start_date, end_date = picked
 else:
@@ -153,8 +169,12 @@ for df in (stance_f, themes_f, meso_f):
 domains = sorted([d for d in domains if d])
 default_domains = ['UK Parliament (Con)','UK Parliament (Lab)','US Congress (Rep)','US Congress (Dem)', 'dailymail.co.uk','telegraph.co.uk', 'theguardian.com','bbc.co.uk','independent.co.uk','thesun.co.uk','mirror.co.uk']
 default_domains = [d for d in default_domains if d in domains]
-selected_domains = st.sidebar.multiselect("Source domain", options=domains,
-                                          default=default_domains)
+selected_domains = st.sidebar.multiselect(
+    "Source domain",
+    options=domains,
+    default=default_domains,
+    help="Keeps only selected domains/outlets in all stance/theme/meso temporal charts. Empty shows all available domains.",
+)
 
 def domain_filter(df: pd.DataFrame):
     if df.empty or not selected_domains or "source_domain" not in df.columns:
@@ -186,6 +206,7 @@ if available_versions:
         "Taxonomy Version",
         options=version_options,
         index=len(version_options) - 1,  # default to latest version
+        help="Filters Theme and Meso temporal series by taxonomy revision. '(All versions)' keeps all revisions.",
     )
 else:
     selected_version = "(All versions)"
@@ -306,7 +327,8 @@ else:
     selected_themes = st.multiselect(
         "Select themes (empty = top 8 auto)",
         options=overall_themes,
-        default=overall_themes[:8]
+        default=overall_themes[:8],
+        help="Choose which themes to plot over time. If nothing is selected, the top 8 themes by volume are used.",
     )
     if not selected_themes:
         selected_themes = overall_themes[:8]
@@ -356,7 +378,8 @@ else:
     selected_meso = st.multiselect(
         "Select meso narratives (empty = top 5 auto)",
         options=meso_ts["meso_narrative"].dropna().unique().tolist(),
-        default=top_meso
+        default=top_meso,
+        help="Choose which meso narratives to plot over time. If nothing is selected, the top 5 narratives by volume are used.",
     )
     if not selected_meso:
         selected_meso = top_meso

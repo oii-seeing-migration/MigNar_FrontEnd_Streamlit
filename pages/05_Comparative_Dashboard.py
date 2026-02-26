@@ -79,6 +79,7 @@ if available_versions:
         "Taxonomy Version",
         options=version_options,
         index=len(version_options) - 1,  # default to latest version
+        help="Filters Theme and Meso aggregates by taxonomy revision. '(All versions)' keeps all revisions.",
     )
 else:
     selected_version = "(All versions)"
@@ -188,6 +189,7 @@ selected_model_A = st.sidebar.selectbox(
     options=available_models,
     index=available_models.index("Ensemble") if "Ensemble" in available_models else 0,
     key="model_a",
+    help="Model used to compute Filter A prevalence values.",
 )
 period_1_in = st.sidebar.date_input(
     "Period (A)",
@@ -195,12 +197,19 @@ period_1_in = st.sidebar.date_input(
     min_value=min_dt,
     max_value=max_dt,
     key="period_1",
+    help="Date window used for Filter A. Only records in this interval are included.",
 )
 period_1 = _norm_date_input(period_1_in)
 domains_1_options = pick_domains_for_range([themes_df, stance_df, meso_df], selected_model_A, period_1[0], period_1[1])
 # Default to UK left-wing outlets that exist in the data
 default_1 = [d for d in UK_LEFT_WING if d in domains_1_options] or domains_1_options[:3]
-domains_1_selected = st.sidebar.multiselect("Source domain (A)", options=domains_1_options, default=default_1, key="domain_1")
+domains_1_selected = st.sidebar.multiselect(
+    "Source domain (A)",
+    options=domains_1_options,
+    default=default_1,
+    key="domain_1",
+    help="Source domains included in Filter A. Empty means all domains available for the chosen period/model.",
+)
 domains_1 = set(domains_1_selected) if domains_1_selected else None
 
 # Filter B (Right-wing UK media)
@@ -210,6 +219,7 @@ selected_model_B = st.sidebar.selectbox(
     options=available_models,
     index=available_models.index("Ensemble") if "Ensemble" in available_models else 0,
     key="model_b",
+    help="Model used to compute Filter B prevalence values.",
 )
 period_2_in = st.sidebar.date_input(
     "Period (B)",
@@ -217,18 +227,39 @@ period_2_in = st.sidebar.date_input(
     min_value=min_dt,
     max_value=max_dt,
     key="period_2",
+    help="Date window used for Filter B. Only records in this interval are included.",
 )
 period_2 = _norm_date_input(period_2_in)
 domains_2_options = pick_domains_for_range([themes_df, stance_df, meso_df], selected_model_B, period_2[0], period_2[1])
 # Default to UK right-wing outlets that exist in the data
 default_2 = [d for d in UK_RIGHT_WING if d in domains_2_options] or domains_2_options[:3]
-domains_2_selected = st.sidebar.multiselect("Source domain (B)", options=domains_2_options, default=default_2, key="domain_2")
+domains_2_selected = st.sidebar.multiselect(
+    "Source domain (B)",
+    options=domains_2_options,
+    default=default_2,
+    key="domain_2",
+    help="Source domains included in Filter B. Empty means all domains available for the chosen period/model.",
+)
 domains_2 = set(domains_2_selected) if domains_2_selected else None
 
 # Macros
 st.sidebar.subheader("Macros")
-min_support = st.sidebar.slider("Min combined article support", 0, 1000, 100, 1)
-top_n = st.sidebar.slider("Top N items (by |difference|)", 5, 40, 20, 1)
+min_support = st.sidebar.slider(
+    "Min combined article support",
+    0,
+    1000,
+    100,
+    1,
+    help="Keeps only labels whose combined article count across Filter A and Filter B is at least this value.",
+)
+top_n = st.sidebar.slider(
+    "Top N items (by |difference|)",
+    5,
+    40,
+    20,
+    1,
+    help="Number of labels shown in contrast charts, ranked by absolute prevalence difference.",
+)
 
 
 st.sidebar.markdown("---")

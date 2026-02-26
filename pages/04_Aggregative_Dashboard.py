@@ -56,7 +56,12 @@ available_models = sorted(set(
     list(meso_df.get("model", pd.Series(dtype=str)).unique() if "model" in meso_df else [])
 ))
 default_model = "Ensemble" if "Ensemble" in available_models else (available_models[0] if available_models else None)
-selected_model = st.sidebar.selectbox("Model", options=available_models, index=available_models.index(default_model) if default_model in available_models else 0)
+selected_model = st.sidebar.selectbox(
+    "Model",
+    options=available_models,
+    index=available_models.index(default_model) if default_model in available_models else 0,
+    help="Filters all charts to a single annotation model. Selecting 'Ensemble' shows consensus outputs.",
+)
 
 def by_model(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty or "model" not in df.columns or not selected_model:
@@ -81,6 +86,7 @@ if available_versions:
         "Taxonomy Version",
         options=version_options,
         index=len(version_options) - 1,  # default to latest version
+        help="Filters Theme and Meso aggregates by taxonomy revision. '(All versions)' keeps all revisions.",
     )
 else:
     selected_version = "(All versions)"
@@ -114,7 +120,8 @@ if min_dt and max_dt:
         "Date range",
         value=(min_dt, max_dt),
         min_value=min_dt,
-        max_value=max_dt
+        max_value=max_dt,
+        help="Limits all aggregates to records whose month falls inside this interval.",
     )
     if isinstance(picked, tuple) and len(picked) == 2:
         start_date, end_date = picked
@@ -146,7 +153,8 @@ default_domains = [d for d in default_domains if d in domains]
 selected_domains = st.sidebar.multiselect(
     "Source domain",
     options=domains,
-    default=default_domains
+    default=default_domains,
+    help="Keeps only the selected outlets/domains in all charts. Empty selection shows all available domains.",
 )
 
 def filter_by_domain(df: pd.DataFrame) -> pd.DataFrame:
@@ -165,8 +173,22 @@ meso_f = filter_by_domain(meso_f)
 
 # Macros (from 03_Contrastive_Dashboard) + apply here
 st.sidebar.subheader("Macros")
-min_support = st.sidebar.slider("Min articles per label", 0, 10000, 100, 1)
-top_n = st.sidebar.slider("Top N items", 5, 40, 25, 1)
+min_support = st.sidebar.slider(
+    "Min articles per label",
+    0,
+    10000,
+    100,
+    1,
+    help="Removes labels/themes/meso narratives with total article support below this threshold after filtering.",
+)
+top_n = st.sidebar.slider(
+    "Top N items",
+    5,
+    40,
+    25,
+    1,
+    help="Maximum number of Theme/Meso items displayed in the ranking charts.",
+)
 
 # 1) Stance bubble chart (aggregate per domain across selected range)
 st.subheader("Aggregate Stance Toward Migration (by Source Domain)")
