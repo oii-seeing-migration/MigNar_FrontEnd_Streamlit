@@ -18,8 +18,20 @@ from lib.auth import get_auth_debug_state, require_auth
 
 BIND_OK, AUTH_UID, USER, supabase = require_auth()
 
-with st.expander("Auth Debug"):
-    st.json(get_auth_debug_state())
+# ── Load taxonomy for suggestion dropdowns ────────────────────────────────
+from taxonomy.meso_narratives_revision_2 import mesoNarratives as _TAXONOMY
+
+TAXONOMY_THEMES = sorted(_TAXONOMY.keys())
+TAXONOMY_MESO_BY_THEME: dict[str, list[str]] = {
+    theme: [entry[0] for entry in entries if isinstance(entry, (list, tuple)) and len(entry) >= 1]
+    for theme, entries in _TAXONOMY.items()
+}
+TAXONOMY_ALL_MESO = sorted({m for mesos in TAXONOMY_MESO_BY_THEME.values() for m in mesos})
+
+
+
+# with st.expander("Auth Debug"):
+#     st.json(get_auth_debug_state())
 
 STANCE_VALIDATIONS_TABLE = "stance_validations"
 NARRATIVE_VALIDATIONS_TABLE = "narrative_validations"
@@ -868,14 +880,144 @@ with st.form(key="validation_form", clear_on_submit=False):
 
     # ── Suggest a missing narrative ───────────────────────────────────────
     st.subheader("➕ Suggest a Missing Narrative")
-    st.caption("If you think the LLMs missed a narrative in this article, suggest it here.")
+
+    # ── Part A: Pick from taxonomy (3 slots) ──────────────────────────────
+    st.caption(
+        "**From taxonomy:** Select a theme and meso narrative from the existing taxonomy. "
+        "Optionally paste the supporting text fragment."
+    )
+
+    suggest_tax_ratios = [0.18, 0.26, 0.18, 0.08, 0.08, 0.13]
+    thdr = st.columns(suggest_tax_ratios)
+    with thdr[0]:
+        st.markdown('<span class="col-hdr">Theme <sub>(taxonomy)</sub></span>', unsafe_allow_html=True)
+    with thdr[1]:
+        st.markdown('<span class="col-hdr">Meso Narrative <sub>(taxonomy)</sub></span>', unsafe_allow_html=True)
+    with thdr[2]:
+        st.markdown('<span class="col-hdr">Fragment</span>', unsafe_allow_html=True)
+    with thdr[3]:
+        st.markdown('<span class="col-hdr">Score<sub>theme</sub></span>', unsafe_allow_html=True)
+    with thdr[4]:
+        st.markdown('<span class="col-hdr">Score<sub>meso</sub></span>', unsafe_allow_html=True)
+    with thdr[5]:
+        st.markdown('<span class="col-hdr">Comment</span>', unsafe_allow_html=True)
+
+    for ti in range(3):
+        tc = st.columns(suggest_tax_ratios)
+        with tc[0]:
+            if is_logged_in:
+                theme_opts = ["—"] + TAXONOMY_THEMES
+                widget_values[f"sugtax_theme_{ti}"] = st.selectbox(
+                    "Theme",
+                    options=theme_opts,
+                    key=f"sugtax_theme_{source_table}_{article_id}_{ti}",
+                    label_visibility="collapsed",
+                )
+            else:
+                st.selectbox(
+                    "Theme",
+                    options=["Sign in"],
+                    disabled=True,
+                    key=f"sugtax_theme_dis_{ti}",
+                    label_visibility="collapsed",
+                )
+        with tc[1]:
+            if is_logged_in:
+                chosen_tax_theme = widget_values.get(f"sugtax_theme_{ti}", "—")
+                if chosen_tax_theme != "—" and chosen_tax_theme in TAXONOMY_MESO_BY_THEME:
+                    meso_opts = ["—"] + TAXONOMY_MESO_BY_THEME[chosen_tax_theme]
+                else:
+                    meso_opts = ["—"] + TAXONOMY_ALL_MESO
+                widget_values[f"sugtax_meso_{ti}"] = st.selectbox(
+                    "Meso",
+                    options=meso_opts,
+                    key=f"sugtax_meso_{source_table}_{article_id}_{ti}",
+                    label_visibility="collapsed",
+                )
+            else:
+                st.selectbox(
+                    "Meso",
+                    options=["Sign in"],
+                    disabled=True,
+                    key=f"sugtax_meso_dis_{ti}",
+                    label_visibility="collapsed",
+                )
+        with tc[2]:
+            if is_logged_in:
+                widget_values[f"sugtax_frag_{ti}"] = st.text_input(
+                    "Fragment",
+                    placeholder="(optional)",
+                    key=f"sugtax_frag_{source_table}_{article_id}_{ti}",
+                    label_visibility="collapsed",
+                )
+            else:
+                st.text_input(
+                    "Fragment",
+                    placeholder="",
+                    disabled=True,
+                    key=f"sugtax_frag_dis_{ti}",
+                    label_visibility="collapsed",
+                )
+        with tc[3]:
+            if is_logged_in:
+                widget_values[f"sugtax_st_{ti}"] = st.selectbox(
+                    "ST",
+                    options=["—", "3", "4", "5"],
+                    key=f"sugtax_st_{source_table}_{article_id}_{ti}",
+                    label_visibility="collapsed",
+                )
+            else:
+                st.selectbox(
+                    "ST",
+                    options=["—"],
+                    disabled=True,
+                    key=f"sugtax_st_dis_{ti}",
+                    label_visibility="collapsed",
+                )
+        with tc[4]:
+            if is_logged_in:
+                widget_values[f"sugtax_sm_{ti}"] = st.selectbox(
+                    "SM",
+                    options=["—", "3", "4", "5"],
+                    key=f"sugtax_sm_{source_table}_{article_id}_{ti}",
+                    label_visibility="collapsed",
+                )
+            else:
+                st.selectbox(
+                    "SM",
+                    options=["—"],
+                    disabled=True,
+                    key=f"sugtax_sm_dis_{ti}",
+                    label_visibility="collapsed",
+                )
+        with tc[5]:
+            if is_logged_in:
+                widget_values[f"sugtax_comment_{ti}"] = st.text_input(
+                    "Comment",
+                    key=f"sugtax_comment_{source_table}_{article_id}_{ti}",
+                    placeholder="Optional note…",
+                    label_visibility="collapsed",
+                )
+            else:
+                st.text_input(
+                    "Comment",
+                    placeholder="",
+                    disabled=True,
+                    key=f"sugtax_comment_dis_{ti}",
+                    label_visibility="collapsed",
+                )
+
+    # ── Part B: Free-text suggestion (2 slots) ───────────────────────────
+    st.caption(
+        "**New narrative:** If the narrative is not in the taxonomy, type it below."
+    )
 
     suggest_ratios = [0.16, 0.24, 0.18, 0.08, 0.08, 0.13]
     shdr = st.columns(suggest_ratios)
     with shdr[0]:
-        st.markdown('<span class="col-hdr">Theme</span>', unsafe_allow_html=True)
+        st.markdown('<span class="col-hdr">Theme <sub>(free text)</sub></span>', unsafe_allow_html=True)
     with shdr[1]:
-        st.markdown('<span class="col-hdr">Meso Narrative</span>', unsafe_allow_html=True)
+        st.markdown('<span class="col-hdr">Meso Narrative <sub>(free text)</sub></span>', unsafe_allow_html=True)
     with shdr[2]:
         st.markdown('<span class="col-hdr">Fragment</span>', unsafe_allow_html=True)
     with shdr[3]:
@@ -891,7 +1033,7 @@ with st.form(key="validation_form", clear_on_submit=False):
     with shdr[5]:
         st.markdown('<span class="col-hdr">Comment</span>', unsafe_allow_html=True)
 
-    for si in range(3):
+    for si in range(2):
         sc = st.columns(suggest_ratios)
         with sc[0]:
             if is_logged_in:
@@ -991,6 +1133,7 @@ with st.form(key="validation_form", clear_on_submit=False):
                 )
 
     st.markdown("---")
+
 
     # ── Stance validation ─────────────────────────────────────────────────
     st.subheader("🎯 Validate Stance")
@@ -1107,8 +1250,37 @@ if save_clicked and is_logged_in:
             else:
                 fail += 1
 
-    # Suggested narratives
-    for si in range(3):
+    # Taxonomy-based suggested narratives (3 slots)
+    for ti in range(3):
+        tax_theme = widget_values.get(f"sugtax_theme_{ti}", "—")
+        tax_meso = widget_values.get(f"sugtax_meso_{ti}", "—")
+        tax_frag = widget_values.get(f"sugtax_frag_{ti}", "").strip()
+        tax_st = widget_values.get(f"sugtax_st_{ti}", "—")
+        tax_sm = widget_values.get(f"sugtax_sm_{ti}", "—")
+        tax_comment = widget_values.get(f"sugtax_comment_{ti}", "").strip()
+
+        if tax_theme != "—" and tax_meso != "—" and (tax_st != "—" or tax_sm != "—"):
+            if upsert_narrative_validation(
+                user=USER,
+                source_table=source_table,
+                article_id=article_id,
+                article_title=article_title,
+                article_body=body_text,
+                model="human_suggested_taxonomy",
+                theme=tax_theme,
+                meso_narrative=tax_meso,
+                text_fragment=tax_frag,
+                score_theme=int(tax_st) if tax_st != "—" else None,
+                score_meso=int(tax_sm) if tax_sm != "—" else None,
+                user_comment=tax_comment,
+                taxonomy_version=taxonomy_version,
+            ):
+                ok += 1
+            else:
+                fail += 1
+
+    # Free-text suggested narratives (2 slots)
+    for si in range(2):
         sug_theme = widget_values.get(f"sug_theme_{si}", "").strip()
         sug_meso = widget_values.get(f"sug_meso_{si}", "").strip()
         sug_frag = widget_values.get(f"sug_frag_{si}", "").strip()
