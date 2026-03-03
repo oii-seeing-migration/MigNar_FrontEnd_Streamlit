@@ -198,6 +198,24 @@ if df.empty:
     st.error(f"No data found: {DATA_PATH}")
     st.stop()
 
+# ── Taxonomy version filter ──────────────────────────────────────────────
+if "version" in df.columns:
+    df["version"] = pd.to_numeric(df["version"], errors="coerce")
+    available_versions = sorted(df["version"].dropna().unique())
+    if available_versions:
+        latest_version = int(max(available_versions))
+        version_options = [int(v) for v in available_versions]
+        selected_version = st.sidebar.selectbox(
+            "Taxonomy Version",
+            options=version_options,
+            index=version_options.index(latest_version),
+            help="Filter articles by taxonomy/prompt version. Defaults to latest.",
+        )
+        df = df[df["version"] == selected_version].copy()
+        if df.empty:
+            st.error(f"No data found for taxonomy version {selected_version}.")
+            st.stop()
+
 THEME_COL = (
     "theme"
     if "theme" in df.columns
