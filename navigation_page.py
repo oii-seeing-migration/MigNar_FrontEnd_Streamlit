@@ -65,8 +65,8 @@ if not st.session_state.user:
     if restore_auth_from_storage():
         st.session_state.auth_processed = True
 
-with st.expander("Auth Debug"):
-    st.json(get_auth_debug_state())
+# with st.expander("Auth Debug"):
+#     st.json(get_auth_debug_state())
 
 if st.session_state.user:
     ensure_sid()
