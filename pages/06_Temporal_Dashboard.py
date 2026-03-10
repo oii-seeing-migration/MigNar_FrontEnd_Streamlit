@@ -1,14 +1,18 @@
 import os
-import streamlit as st
-import altair as alt
-import pandas as pd
 from datetime import date
 
-st.set_page_config(page_title="Temporal Dashboard",
-                   layout="wide",
-                   page_icon=".streamlit/static/MigNar_icon.png")
+import altair as alt
+import pandas as pd
+import streamlit as st
+
+st.set_page_config(
+    page_title="Temporal Dashboard",
+    layout="wide",
+    page_icon=".streamlit/static/MigNar_icon.png",
+)
 
 from lib.sidebar_style import apply_sidebar_names
+
 apply_sidebar_names()
 
 st.title("Temporal Dashboard")
@@ -19,14 +23,29 @@ st.title("Temporal Dashboard")
 DATA_DIR = os.path.expanduser("./data")
 STANCE_PATH = os.path.join(DATA_DIR, "stance_monthly.parquet")
 THEMES_PATH = os.path.join(DATA_DIR, "themes_monthly.parquet")
-MESO_PATH   = os.path.join(DATA_DIR, "meso_monthly.parquet")
+MESO_PATH = os.path.join(DATA_DIR, "meso_monthly.parquet")
+
+EXCLUDED_SOURCES_DEFAULT = {
+    "US Congress (All)",
+    "US Congress (Rep)",
+    "US Congress (Dem)",
+    "UK Parliament (Lab)",
+    "UK Parliament (Con)",
+    "UK Parliament (Reform)",
+    "UK Parliament (Green)",
+    "UK Parliament (SNP)",
+    "UK Parliament (LD)",
+}
+
 
 # @st.cache_data(ttl="30m", show_spinner=True, max_entries=1)
 def load_parquets(stance_fp: str, themes_fp: str, meso_fp: str):
-    def _read_parquet(fp):
+    def _read_parquet(fp: str) -> pd.DataFrame:
         if not os.path.exists(fp):
             return pd.DataFrame()
+
         df = pd.read_parquet(fp)
+
         if "month" in df.columns:
             df["month"] = pd.to_datetime(df["month"] + "-01", errors="coerce")
         if "source_domain" in df.columns:
@@ -35,17 +54,26 @@ def load_parquets(stance_fp: str, themes_fp: str, meso_fp: str):
             df["model"] = df["model"].fillna("").astype(str)
         if "count" in df.columns:
             df["count"] = pd.to_numeric(df["count"], errors="coerce").fillna(0).astype(int)
+
+        for col in ["stance", "theme", "meso_narrative"]:
+            if col in df.columns:
+                df[col] = df[col].fillna("").astype(str)
+
         return df
 
     stance_df = _read_parquet(stance_fp)
     themes_df = _read_parquet(themes_fp)
-    meso_df   = _read_parquet(meso_fp)
+    meso_df = _read_parquet(meso_fp)
     return stance_df, themes_df, meso_df
+
 
 stance_df, themes_df, meso_df = load_parquets(STANCE_PATH, THEMES_PATH, MESO_PATH)
 
-if stance_df.empty and themes_df.empty:
-    st.error(f"No aggregates found in {DATA_DIR}. Ensure stance_monthly.parquet and themes_monthly.parquet exist.")
+if stance_df.empty and themes_df.empty and meso_df.empty:
+    st.error(
+        f"No aggregates found in {DATA_DIR}. "
+        "Ensure stance_monthly.parquet, themes_monthly.parquet, and meso_monthly.parquet exist."
+    )
     st.stop()
 
 # -------------------------------------
@@ -58,26 +86,24 @@ def _time_axis_and_scale(freq_label: str):
     elif freq_label == "Monthly":
         axis = alt.Axis(title="Period", format="%b %Y", tickCount={"interval": "month", "step": 1})
         scale = alt.Scale(nice={"interval": "month", "step": 1})
-    else:  # Yearly
+    else:
         axis = alt.Axis(title="Period", format="%Y", tickCount={"interval": "year", "step": 1})
         scale = alt.Scale(nice={"interval": "year", "step": 1})
     return axis, scale
 
+
 def _freq_to_pandas(freq_label: str) -> str:
-    # Use pandas-supported period codes:
-    # - Weekly anchored to Monday
-    # - Monthly period ('M')
-    # - Yearly period ('A-DEC')
     return {"Weekly": "W-MON", "Monthly": "M", "Yearly": "Y-DEC"}[freq_label]
+
 
 def add_period(df: pd.DataFrame, freq_label: str) -> pd.DataFrame:
     if df.empty or "month" not in df.columns:
         return df
-    freq = _freq_to_pandas(freq_label)
     out = df.copy()
-    # Convert to Period, then to start-of-period Timestamp
+    freq = _freq_to_pandas(freq_label)
     out["period"] = out["month"].dt.to_period(freq).dt.start_time
     return out
+
 
 def available_models_union(*dfs):
     models = set()
@@ -86,15 +112,46 @@ def available_models_union(*dfs):
             models.update(df["model"].dropna().unique().tolist())
     return sorted([m for m in models if m])
 
+
+def model_filter(df: pd.DataFrame, model: str) -> pd.DataFrame:
+    if df.empty or "model" not in df.columns:
+        return df
+    return df[df["model"] == model].copy()
+
+
+def date_filter(df: pd.DataFrame, start_date: date, end_date: date) -> pd.DataFrame:
+    if df.empty or "month" not in df.columns:
+        return df
+    return df[(df["month"].dt.date >= start_date) & (df["month"].dt.date <= end_date)].copy()
+
+
+def domain_filter(df: pd.DataFrame, selected_domains: list[str]) -> pd.DataFrame:
+    if df.empty or "source_domain" not in df.columns:
+        return df
+    if selected_domains is None:
+        return df
+    if len(selected_domains) == 0:
+        return df.iloc[0:0].copy()
+    return df[df["source_domain"].isin(selected_domains)].copy()
+
+
+def by_version(df: pd.DataFrame, selected_version) -> pd.DataFrame:
+    if df.empty or selected_version == "(All versions)" or "version" not in df.columns:
+        return df
+    v = pd.to_numeric(df["version"], errors="coerce")
+    return df[v == int(selected_version)].copy()
+
+
 # -------------------------------------
-# Sidebar controls (Model, Time, Domain)
+# Sidebar controls
 # -------------------------------------
-# Model selector
-models = available_models_union(stance_df, themes_df)
+models = available_models_union(stance_df, themes_df, meso_df)
 default_model = "Ensemble" if "Ensemble" in models else (models[0] if models else None)
+
 if not models:
     st.error("No models found in aggregates.")
     st.stop()
+
 selected_model = st.sidebar.selectbox(
     "Model",
     options=models,
@@ -102,24 +159,14 @@ selected_model = st.sidebar.selectbox(
     help="Filters all temporal series to a single model. 'Ensemble' uses consensus outputs.",
 )
 
-# Date bounds across selected model
-def model_filter(df):
-    if df.empty or "model" not in df.columns:
-        return df
-    return df[df["model"] == selected_model].copy()
-
 st.sidebar.markdown("---")
-# if st.sidebar.button("🧹 Clear Cache (if slow)"):
-#     st.cache_data.clear()
-#     st.success("Cache cleared! Refresh to reload data.")
 
-
-stance_m = model_filter(stance_df)
-themes_m = model_filter(themes_df)
-meso_m   = model_filter(meso_df)
+stance_m = model_filter(stance_df, selected_model)
+themes_m = model_filter(themes_df, selected_model)
+meso_m = model_filter(meso_df, selected_model)
 
 date_series = []
-for df in (stance_m, themes_m):
+for df in (stance_m, themes_m, meso_m):
     if not df.empty and "month" in df.columns:
         date_series.append(df["month"])
 
@@ -131,7 +178,6 @@ else:
     st.error("No valid 'month' column found for the selected model.")
     st.stop()
 
-# Granularity
 freq_label = st.sidebar.selectbox(
     "Granularity",
     ["Monthly", "Yearly"],
@@ -139,7 +185,6 @@ freq_label = st.sidebar.selectbox(
     help="Controls temporal aggregation of lines. Monthly shows finer variation; Yearly shows long-run trends.",
 )
 
-# Date picker
 picked = st.sidebar.date_input(
     "Date range",
     value=(date(2000, 1, 1), max_dt),
@@ -147,120 +192,120 @@ picked = st.sidebar.date_input(
     max_value=max_dt,
     help="Limits all temporal series to periods whose month lies inside this interval.",
 )
+
 if isinstance(picked, tuple) and len(picked) == 2:
     start_date, end_date = picked
 else:
     start_date = end_date = picked
 
-def date_filter(df: pd.DataFrame):
-    if df.empty or "month" not in df.columns:
-        return df
-    return df[(df["month"].dt.date >= start_date) & (df["month"].dt.date <= end_date)].copy()
+stance_f_all = date_filter(stance_m, start_date, end_date)
+themes_f_all = date_filter(themes_m, start_date, end_date)
+meso_f_all = date_filter(meso_m, start_date, end_date)
 
-stance_f = date_filter(stance_m)
-themes_f = date_filter(themes_m)
-meso_f   = date_filter(meso_m)
-
-# Domain filter (defaults to all domains in filtered range)
 domains = set()
-for df in (stance_f, themes_f, meso_f):
+for df in (stance_f_all, themes_f_all, meso_f_all):
     if not df.empty and "source_domain" in df.columns:
         domains.update(df["source_domain"].dropna().unique().tolist())
-domains = sorted([d for d in domains if d])
-default_domains = ['UK Parliament (Con)','UK Parliament (Lab)','US Congress (Rep)','US Congress (Dem)', 'dailymail.co.uk','telegraph.co.uk', 'theguardian.com','bbc.co.uk','independent.co.uk','thesun.co.uk','mirror.co.uk']
-default_domains = [d for d in default_domains if d in domains]
-selected_domains = st.sidebar.multiselect(
-    "Source domain",
+domains = sorted([d for d in domains])
+
+default_narrative_domains = [d for d in domains if d not in EXCLUDED_SOURCES_DEFAULT]
+default_stance_domains = [
+    d for d in domains
+    if d.startswith("UK Parliament") or d.startswith("US Congress")
+]
+
+selected_stance_domains = st.sidebar.multiselect(
+    "Stance source domain",
     options=domains,
-    default=default_domains,
-    help="Keeps only selected domains/outlets in all stance/theme/meso temporal charts. Empty shows all available domains.",
+    default=default_stance_domains,
+    help="Filters the stance chart only. Defaults to UK Parliament and US Congress domains.",
 )
 
-def domain_filter(df: pd.DataFrame):
-    if df.empty or not selected_domains or "source_domain" not in df.columns:
-        return df
-    return df[df["source_domain"].isin(selected_domains)].copy()
+selected_narrative_domains = st.sidebar.multiselect(
+    "Narratives source domain",
+    options=domains,
+    default=default_narrative_domains,
+    help="Filters the theme and meso narrative charts only.",
+)
 
-stance_f = domain_filter(stance_f)
-themes_f = domain_filter(themes_f)
-meso_f   = domain_filter(meso_f)
+stance_f = domain_filter(stance_f_all, selected_stance_domains)
+themes_f = domain_filter(themes_f_all, selected_narrative_domains)
+meso_f = domain_filter(meso_f_all, selected_narrative_domains)
 
-# Add period column post-filter
 stance_p = add_period(stance_f, freq_label)
 themes_p = add_period(themes_f, freq_label)
-meso_p   = add_period(meso_f, freq_label)
+meso_p = add_period(meso_f, freq_label)
 
 st.sidebar.markdown("---")
 
-available_versions = sorted(set(
-    list(pd.to_numeric(themes_df["version"], errors="coerce").dropna().astype(int).unique().tolist())
-    if ("version" in themes_df.columns and not themes_df.empty) else []
-    +
-    list(pd.to_numeric(meso_df["version"], errors="coerce").dropna().astype(int).unique().tolist())
-    if ("version" in meso_df.columns and not meso_df.empty) else []
-))
+available_versions = sorted(
+    set(
+        (
+            list(pd.to_numeric(themes_df["version"], errors="coerce").dropna().astype(int).unique().tolist())
+            if ("version" in themes_df.columns and not themes_df.empty)
+            else []
+        )
+        + (
+            list(pd.to_numeric(meso_df["version"], errors="coerce").dropna().astype(int).unique().tolist())
+            if ("version" in meso_df.columns and not meso_df.empty)
+            else []
+        )
+    )
+)
 
 if available_versions:
     version_options = ["(All versions)"] + available_versions
     selected_version = st.sidebar.selectbox(
         "Taxonomy Version",
         options=version_options,
-        index=len(version_options) - 1,  # default to latest version
+        index=len(version_options) - 1,
         help="Filters Theme and Meso temporal series by taxonomy revision. '(All versions)' keeps all revisions.",
     )
 else:
     selected_version = "(All versions)"
 
-def by_version(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty or selected_version == "(All versions)" or "version" not in df.columns:
-        return df
-    v = pd.to_numeric(df["version"], errors="coerce")
-    return df[v == int(selected_version)].copy()
-
-
-# Apply version filter ONLY to themes/meso
-themes_p = by_version(themes_p)
-meso_p   = by_version(meso_p)
-
-
-
-
+themes_p = by_version(themes_p, selected_version)
+meso_p = by_version(meso_p, selected_version)
 
 # -------------------------------------
-# Build denominators (total relevant per period)
+# Build denominators for narratives only
+# denominator = relevant stance articles in narrative domains
 # -------------------------------------
-# Total relevant articles per period from stance counts (sum across labels)
-if not stance_p.empty:
-    totals_per_period = (
-        stance_p.groupby("period", as_index=False)["count"]
+stance_for_narratives = domain_filter(stance_f_all, selected_narrative_domains)
+stance_for_narratives_p = add_period(stance_for_narratives, freq_label)
+
+if not stance_for_narratives_p.empty and "stance" in stance_for_narratives_p.columns:
+    narrative_totals_per_period = (
+        stance_for_narratives_p[
+            stance_for_narratives_p["stance"].isin(["OPEN", "RESTRICTIVE", "NEUTRAL"])
+        ]
+        .groupby("period", as_index=False)["count"]
         .sum()
         .rename(columns={"count": "total"})
     )
 else:
-    totals_per_period = pd.DataFrame(columns=["period", "total"])
-
+    narrative_totals_per_period = pd.DataFrame(columns=["period", "total"])
 
 # -------------------------------------
-# Stance: temporal stance-score lines (by domain)
-# Score = (OPEN - RESTRICTIVE) / (OPEN + RESTRICTIVE + NEUTRAL)
+# Stance
 # -------------------------------------
 st.subheader("Stance Toward Migration Over Time (by Domain)")
+
 if stance_p.empty:
     st.info("No stance data in selected filters.")
 else:
-    # Sum per period x domain x stance
     stance_sum = (
         stance_p.groupby(["period", "source_domain", "stance"], as_index=False)["count"]
         .sum()
         .rename(columns={"count": "articles"})
     )
-    # Pivot to OPEN/RESTRICTIVE/NEUTRAL columns
+
     pivot = stance_sum.pivot_table(
         index=["period", "source_domain"],
         columns="stance",
         values="articles",
         aggfunc="sum",
-        fill_value=0
+        fill_value=0,
     ).reset_index()
 
     for col in ["OPEN", "RESTRICTIVE", "NEUTRAL"]:
@@ -269,13 +314,14 @@ else:
 
     pivot["total"] = pivot["OPEN"] + pivot["RESTRICTIVE"] + pivot["NEUTRAL"]
     pivot["stance_score"] = pivot.apply(
-        lambda r: (r["OPEN"] - r["RESTRICTIVE"]) / r["total"] if r["total"] > 0 else None, axis=1
+        lambda r: (r["OPEN"] - r["RESTRICTIVE"]) / r["total"] if r["total"] > 0 else None,
+        axis=1,
     )
+
     stance_ts = pivot.dropna(subset=["stance_score"]).copy()
 
-    # Keep only selected domains (already filtered, but safe)
-    if selected_domains:
-        stance_ts = stance_ts[stance_ts["source_domain"].isin(selected_domains)].copy()
+    if selected_stance_domains:
+        stance_ts = stance_ts[stance_ts["source_domain"].isin(selected_stance_domains)].copy()
 
     if stance_ts.empty:
         st.info("No stance series to plot after filtering.")
@@ -283,7 +329,11 @@ else:
         axis_x, scale_x = _time_axis_and_scale(freq_label)
         stance_line = alt.Chart(stance_ts).mark_line(point=True).encode(
             x=alt.X("period:T", axis=axis_x, scale=scale_x),
-            y=alt.Y("stance_score:Q", title="Stance Score", scale=alt.Scale(domain=(-1, 1), clamp=True)),
+            y=alt.Y(
+                "stance_score:Q",
+                title="Stance Score",
+                scale=alt.Scale(domain=(-1, 1), clamp=True),
+            ),
             color=alt.Color("source_domain:N", title="Domain"),
             tooltip=[
                 alt.Tooltip("source_domain:N", title="Domain"),
@@ -295,15 +345,15 @@ else:
                 alt.Tooltip("total:Q", title="Total"),
             ],
         ).properties(title=f"Stance Score Over Time ({freq_label}, Model: {selected_model})", height=420)
+
         st.altair_chart(stance_line, width="stretch")
 
-
-
-
 # -------------------------------------
-# Themes: temporal prevalence lines
+# Themes
 # -------------------------------------
-if themes_p.empty or totals_per_period.empty:
+st.subheader("Themes Over Time")
+
+if themes_p.empty or narrative_totals_per_period.empty:
     st.info("No theme data in selected filters.")
 else:
     themes_counts = (
@@ -311,12 +361,13 @@ else:
         .sum()
         .rename(columns={"count": "articles"})
     )
-    themes_ts = themes_counts.merge(totals_per_period, on="period", how="left")
+
+    themes_ts = themes_counts.merge(narrative_totals_per_period, on="period", how="left")
     themes_ts["prevalence"] = themes_ts.apply(
-        lambda r: (r["articles"] / r["total"]) if r["total"] and r["total"] > 0 else 0.0, axis=1
+        lambda r: (r["articles"] / r["total"]) if pd.notna(r["total"]) and r["total"] > 0 else 0.0,
+        axis=1,
     )
 
-    # Top themes overall in the window to drive selection
     overall_themes = (
         themes_ts.groupby("theme")["articles"]
         .sum()
@@ -324,37 +375,44 @@ else:
         .head(30)
         .index.tolist()
     )
+
     selected_themes = st.multiselect(
         "Select themes (empty = top 8 auto)",
         options=overall_themes,
         default=overall_themes[:8],
         help="Choose which themes to plot over time. If nothing is selected, the top 8 themes by volume are used.",
     )
+
     if not selected_themes:
         selected_themes = overall_themes[:8]
+
     plot_themes = themes_ts[themes_ts["theme"].isin(selected_themes)].copy()
 
     axis_x, scale_x = _time_axis_and_scale(freq_label)
     line = alt.Chart(plot_themes).mark_line(point=True).encode(
         x=alt.X("period:T", axis=axis_x, scale=scale_x),
         y=alt.Y("prevalence:Q", axis=alt.Axis(format=".0%"), title="Prevalence"),
-        color=alt.Color("theme:N", title="Theme"),
+        color=alt.Color(
+            "theme:N",
+            title="Theme",
+            legend=alt.Legend(labelLimit=1000),
+        ),
         tooltip=[
             alt.Tooltip("theme:N", title="Theme"),
             alt.Tooltip("period:T", title="Period"),
             alt.Tooltip("articles:Q", title="# Articles"),
             alt.Tooltip("prevalence:Q", format=".1%", title="Prevalence"),
-        ]
+        ],
     ).properties(title=f"Theme Prevalence Over Time ({freq_label}, Model: {selected_model})")
+
     st.altair_chart(line, width="stretch")
 
-
-
 # -------------------------------------
-# Meso narratives: temporal prevalence lines
+# Meso narratives
 # -------------------------------------
 st.subheader("Meso Narratives Over Time")
-if meso_p.empty or totals_per_period.empty:
+
+if meso_p.empty or narrative_totals_per_period.empty:
     st.info("No meso narrative data in selected filters.")
 else:
     meso_counts = (
@@ -362,12 +420,13 @@ else:
         .sum()
         .rename(columns={"count": "articles"})
     )
-    meso_ts = meso_counts.merge(totals_per_period, on="period", how="left")
+
+    meso_ts = meso_counts.merge(narrative_totals_per_period, on="period", how="left")
     meso_ts["prevalence"] = meso_ts.apply(
-        lambda r: (r["articles"] / r["total"]) if r["total"] and r["total"] > 0 else 0.0, axis=1
+        lambda r: (r["articles"] / r["total"]) if pd.notna(r["total"]) and r["total"] > 0 else 0.0,
+        axis=1,
     )
 
-    # Top 5 meso narratives in current window
     top_meso = (
         meso_ts.groupby("meso_narrative")["articles"]
         .sum()
@@ -375,12 +434,14 @@ else:
         .head(5)
         .index.tolist()
     )
+
     selected_meso = st.multiselect(
         "Select meso narratives (empty = top 5 auto)",
         options=meso_ts["meso_narrative"].dropna().unique().tolist(),
         default=top_meso,
         help="Choose which meso narratives to plot over time. If nothing is selected, the top 5 narratives by volume are used.",
     )
+
     if not selected_meso:
         selected_meso = top_meso
 
@@ -396,15 +457,13 @@ else:
             alt.Tooltip("period:T", title="Period"),
             alt.Tooltip("articles:Q", title="# Articles"),
             alt.Tooltip("prevalence:Q", format=".1%", title="Prevalence"),
-        ]
+        ],
     ).properties(title=f"Meso Narrative Prevalence Over Time ({freq_label}, Model: {selected_model})")
+
     st.altair_chart(meso_line, width="stretch")
-
-
-
-
 
 with st.expander("Underlying Data Snapshots"):
     st.write("Themes (filtered):", themes_f.head(100))
     st.write("Stance (filtered):", stance_f.head(100))
     st.write("Meso (filtered):", meso_f.head(100))
+    st.write("Narrative denominators:", narrative_totals_per_period.head(100))

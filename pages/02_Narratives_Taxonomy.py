@@ -122,6 +122,10 @@ EXCLUDED_SOURCES_DEFAULT = {
     "US Congress (Dem)",
     "UK Parliament (Lab)",
     "UK Parliament (Con)",
+    "UK Parliament (Reform)",
+    "UK Parliament (Green)",
+    "UK Parliament (SNP)",
+    "UK Parliament (LD)",
 }
 
 # ── Data loaders ───────────────────────────────────────────────────────────────
