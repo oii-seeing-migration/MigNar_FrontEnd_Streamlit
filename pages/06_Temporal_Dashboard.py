@@ -185,6 +185,22 @@ freq_label = st.sidebar.selectbox(
     help="Controls temporal aggregation of lines. Monthly shows finer variation; Yearly shows long-run trends.",
 )
 
+y_axis_metric = st.sidebar.radio(
+    "Y-Axis Metric",
+    options=["Percentage", "Count"],
+    index=0,
+    help="Display chart lines as a percentage of total relevant articles or as a raw article count.",
+)
+
+if y_axis_metric == "Percentage":
+    y_field = "prevalence:Q"
+    y_format = ".0%"
+    y_title = "Prevalence"
+else:
+    y_field = "articles:Q"
+    y_format = "d"
+    y_title = "Article Count"
+
 picked = st.sidebar.date_input(
     "Date range",
     value=(date(2000, 1, 1), max_dt),
@@ -405,7 +421,7 @@ else:
     axis_x, scale_x = _time_axis_and_scale(freq_label)
     line = alt.Chart(plot_themes).mark_line(point=True, interpolate="monotone").encode(
         x=alt.X("period_plot:T", axis=axis_x, scale=scale_x),
-        y=alt.Y("prevalence:Q", axis=alt.Axis(format=".0%"), title="Prevalence"),
+        y=alt.Y(y_field, axis=alt.Axis(format=y_format), title=y_title),
         color=alt.Color(
             "theme:N",
             title="Theme",
@@ -417,7 +433,7 @@ else:
             alt.Tooltip("articles:Q", title="# Articles"),
             alt.Tooltip("prevalence:Q", format=".1%", title="Prevalence"),
         ],
-    ).properties(title=f"Theme Prevalence Over Time ({freq_label}, Model: {selected_model})")
+    ).properties(title=f"Theme {y_title} Over Time ({freq_label}, Model: {selected_model})")
 
     st.altair_chart(line, width="stretch")
 
@@ -471,7 +487,7 @@ else:
     axis_x, scale_x = _time_axis_and_scale(freq_label)
     meso_line = alt.Chart(plot_meso).mark_line(point=True, interpolate="monotone").encode(
         x=alt.X("period_plot:T", axis=axis_x, scale=scale_x),
-        y=alt.Y("prevalence:Q", axis=alt.Axis(format=".0%"), title="Prevalence"),
+        y=alt.Y(y_field, axis=alt.Axis(format=y_format), title=y_title),
         color=alt.Color("meso_narrative:N", title="Meso Narrative"),
         tooltip=[
             alt.Tooltip("meso_narrative:N", title="Meso Narrative"),
@@ -479,7 +495,7 @@ else:
             alt.Tooltip("articles:Q", title="# Articles"),
             alt.Tooltip("prevalence:Q", format=".1%", title="Prevalence"),
         ],
-    ).properties(title=f"Meso Narrative Prevalence Over Time ({freq_label}, Model: {selected_model})")
+    ).properties(title=f"Meso Narrative {y_title} Over Time ({freq_label}, Model: {selected_model})")
 
     st.altair_chart(meso_line, width="stretch")
 
