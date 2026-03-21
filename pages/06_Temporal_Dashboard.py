@@ -326,9 +326,16 @@ else:
     if stance_ts.empty:
         st.info("No stance series to plot after filtering.")
     else:
+        if freq_label == "Yearly":
+            stance_ts["period_plot"] = stance_ts["period"] + pd.DateOffset(months=6)
+        elif freq_label == "Monthly":
+            stance_ts["period_plot"] = stance_ts["period"] + pd.DateOffset(days=15)
+        else:
+            stance_ts["period_plot"] = stance_ts["period"] + pd.DateOffset(days=3, hours=12)
+
         axis_x, scale_x = _time_axis_and_scale(freq_label)
-        stance_line = alt.Chart(stance_ts).mark_line(point=True).encode(
-            x=alt.X("period:T", axis=axis_x, scale=scale_x),
+        stance_line = alt.Chart(stance_ts).mark_line(point=True, interpolate="monotone").encode(
+            x=alt.X("period_plot:T", axis=axis_x, scale=scale_x),
             y=alt.Y(
                 "stance_score:Q",
                 title="Stance Score",
@@ -372,7 +379,7 @@ else:
         themes_ts.groupby("theme")["articles"]
         .sum()
         .sort_values(ascending=False)
-        .head(30)
+        .head(49)
         .index.tolist()
     )
 
@@ -388,9 +395,16 @@ else:
 
     plot_themes = themes_ts[themes_ts["theme"].isin(selected_themes)].copy()
 
+    if freq_label == "Yearly":
+        plot_themes["period_plot"] = plot_themes["period"] + pd.DateOffset(months=6)
+    elif freq_label == "Monthly":
+        plot_themes["period_plot"] = plot_themes["period"] + pd.DateOffset(days=15)
+    else:
+        plot_themes["period_plot"] = plot_themes["period"] + pd.DateOffset(days=3, hours=12)
+
     axis_x, scale_x = _time_axis_and_scale(freq_label)
-    line = alt.Chart(plot_themes).mark_line(point=True).encode(
-        x=alt.X("period:T", axis=axis_x, scale=scale_x),
+    line = alt.Chart(plot_themes).mark_line(point=True, interpolate="monotone").encode(
+        x=alt.X("period_plot:T", axis=axis_x, scale=scale_x),
         y=alt.Y("prevalence:Q", axis=alt.Axis(format=".0%"), title="Prevalence"),
         color=alt.Color(
             "theme:N",
@@ -447,9 +461,16 @@ else:
 
     plot_meso = meso_ts[meso_ts["meso_narrative"].isin(selected_meso)].copy()
 
+    if freq_label == "Yearly":
+        plot_meso["period_plot"] = plot_meso["period"] + pd.DateOffset(months=6)
+    elif freq_label == "Monthly":
+        plot_meso["period_plot"] = plot_meso["period"] + pd.DateOffset(days=15)
+    else:
+        plot_meso["period_plot"] = plot_meso["period"] + pd.DateOffset(days=3, hours=12)
+
     axis_x, scale_x = _time_axis_and_scale(freq_label)
-    meso_line = alt.Chart(plot_meso).mark_line(point=True).encode(
-        x=alt.X("period:T", axis=axis_x, scale=scale_x),
+    meso_line = alt.Chart(plot_meso).mark_line(point=True, interpolate="monotone").encode(
+        x=alt.X("period_plot:T", axis=axis_x, scale=scale_x),
         y=alt.Y("prevalence:Q", axis=alt.Axis(format=".0%"), title="Prevalence"),
         color=alt.Color("meso_narrative:N", title="Meso Narrative"),
         tooltip=[
