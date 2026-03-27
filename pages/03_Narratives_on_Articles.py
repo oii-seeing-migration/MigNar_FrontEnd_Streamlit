@@ -736,7 +736,7 @@ with st.form(key="validation_form", clear_on_submit=False):
         "(perfectly correct). Leave blank to skip."
     )
     if is_logged_in:
-        st.caption("💡 **Model names are hidden** to avoid bias. Use the expander to reveal after scoring.")
+        st.caption("💡 **Model names are hidden** to avoid bias.")
 
     if not all_ann_frag_objs:
         st.info("No narrative annotations found for this article.")
@@ -1138,8 +1138,8 @@ with st.form(key="validation_form", clear_on_submit=False):
     # ── Stance validation ─────────────────────────────────────────────────
     st.subheader("🎯 Validate Stance")
     st.markdown("**Your stance assessment:**")
-    if is_logged_in:
-        st.caption("💡 To avoid bias, label the stance *before* expanding the LLM predictions below.")
+    # if is_logged_in:
+    #     st.caption("💡 To avoid bias, label the stance *before* expanding the LLM predictions below.")
 
     st_cols = st.columns([0.4, 0.6])
     with st_cols[0]:
@@ -1191,7 +1191,7 @@ with st.form(key="validation_form", clear_on_submit=False):
     if stance_per_model:
         st.markdown("**LLM Stance Predictions:**")
         if is_logged_in:
-            with st.expander("👁️ Click to reveal LLM stances (after you've made your assessment)", expanded=False):
+            with st.expander("👁️ LLM stances (hidden to annotators)", expanded=False):
                 for mn, st_val in sorted(stance_per_model.items()):
                     st.markdown(f"**{mn}:** {stance_to_badge_html(st_val)}", unsafe_allow_html=True)
                 st.markdown(f"**🔷 Ensemble:** {stance_to_badge_html(ensemble_stance)}", unsafe_allow_html=True)
