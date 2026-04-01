@@ -21,13 +21,19 @@ UK_LEFT_WING = [
     "theguardian.com",
     "mirror.co.uk",
     "independent.co.uk",
+    "huffingtonpost.co.uk",
+    "dailyrecord.co.uk",
+    "thenational.scot",
+    "heraldscotland.com"
 ]
-
 UK_RIGHT_WING = [
     "telegraph.co.uk",
     "dailymail.co.uk",
     "express.co.uk",
     "thesun.co.uk",
+    "spectator.co.uk",
+    "thetimes.co.uk",
+    "thescottishsun.co.uk"
 ]
 
 # ------------------------------------------------------------

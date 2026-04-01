@@ -9,313 +9,121 @@ st.set_page_config(
 from lib.sidebar_style import apply_sidebar_names
 apply_sidebar_names()
 
-
 st.title("📖 MigNar Platform Instructions")
 
 st.markdown("""
-Welcome to the MigNar platform! This guide explains how to use the different features of this application.
+Welcome to the **MigNar Platform**! This application is designed to help researchers explore, validate, and refine artificial intelligence extractions of migration narratives.
+
+Below is a step-by-step guide to the functionalities of the core pages of the platform and how you can use them.
+""")
+
+st.markdown("---")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Page 1: Annotator Guide
+# ═══════════════════════════════════════════════════════════════════════════
+st.header("📝 Annotator Guide")
+
+st.markdown("""
+**Purpose**:  
+If you are an annotator willing to participate in the evaluation and refinement of whether migration-related narratives taxonomy or the validation of AI-extracted narratives per article, this page serves as your required reference manual. Before performing any evaluation tasks on the platform, you should read this guide to understand the project's goals, standard terminologies, and the rules of the road. 
+
+**Key Functionalities & How to Use**:
+- **Understand the Hierarchy**: Learn the difference between high-level **Themes** (e.g., *"Migrants & Crime"*) and granular **Meso Narratives** (e.g., *"Migration brings dangerous offenders"*).
+- **Learn the Rating Criteria**: Get familiar with the exact definitions of the labels you will be applying later, such as *"Good"*, *"Too Broad"*, *"Too Narrow"*, or *"Duplicate"*.
+- **Best Practices**: Rely on this document as a reminder to avoid normative political judgments during annotation. Your goal is to assess if the narrative structure cleanly explains the text, not if you agree with the text itself.
 """)
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Section 1: Hierarchical Labeling System
+# Page 2: Narratives Taxonomy
 # ═══════════════════════════════════════════════════════════════════════════
-st.header("1. Understanding the Hierarchical Labeling System")
+st.header("📚 Narratives Taxonomy")
 
 st.markdown("""
-MigNar uses a **three-level hierarchical approach** to analyze migration narratives in news articles:
+**Purpose**:  
+This is the workspace for observing, evaluating, and refining the structure of the *Taxonomy itself*. You are not grading individual news articles here; you are determining whether the overall list of narratives proposed by the researchers and AI makes logical sense entirely as universal categories.
 
-### 🔹 Level 1: Stance
-The **stance** represents the overall sentiment or position toward migration expressed in an article. The system identifies three types:
-- **Open**: Statements/Articles where the author advocates direct or indirect support for maintaining or expanding immigration to the host country.
-- **Restrictive**: Statements/Articles where the author advocates direct or indirect support for limiting, controlling, or reducing immigration to the host country.
-- **Neutral**: Statements/Articles that are fully or at least partially related to immigration to the host country, but the author remains impartial and does not express any OPEN or RESTRICTIVE stance.
-
-### 🔹 Level 2: Themes
-**Themes** are high-level topics or frames used to discuss migration. Each article may contain multiple themes. Examples include:
-- *Border Control & Freedom of Movement*
-- *International Students*
-- *Climate Migration*
-- *Migrants & Culture*
-- *Migrants & Crimes*
-- *Migrants, Economy, & Labour Market*
-
-Themes organize narratives into broad categories that help understand the primary focus of discourse.
-
-### 🔹 Level 3: Meso Narratives
-**Meso narratives** are specific storylines or arguments within each theme. They represent the concrete ways themes are discussed. For example:
-- **theme**: *Migrants, Economy, & Labour Market* ⟶ **meso narrative**: *Migrants take jobs from native workers*
-- **theme**: *Migrants, Economy, & Labour Market* ⟶ **meso narrative**: *Migrants contribute to economic growth*
-- **theme**: *Migrants & Crimes* ⟶ **meso narrative**: *Migration brings dangerous sexual offenders*
-
-Meso narratives are the most granular level and capture the actual narrative content being communicated.
-
-### Hierarchical Structure
-The relationship works as follows:
-
-Article
-├── Stance: Restrictive
-├── Theme: *Migrants, Economy, & Labour Market*
-│ ├── Meso Narrative: "Migrants burden the welfare system"
-│ └── Meso Narrative: "Economic strain from uncontrolled migration"
-└── Theme: *Migrants & Crimes*
-│ └── Meso Narrative: "Border security is insufficient"
-            
-
-Each article can have:
-- **One stance** (the dominant position)
-- **Multiple themes** (different topics discussed)
-- **Multiple meso narratives** (specific storylines within each theme)
+**Key Functionalities & How to Use**:
+- **Login to Save**: You must be logged in to save your annotations. Unauthenticated users have view-only access.
+- **Filtering & Navigation**: Use the sidebar to filter the dataset by specific "Taxonomy Revision Versions", "Source Domains", or "Models".
+- **Annotate Narratives**: For each Meso Narrative under a Theme, use the dropdown to assign a label (e.g., *Good*, *Duplicate*, *Wrong Theme*). You can also leave comments if you choose a problematic label to explain your reasoning.
+- **Suggest Additions**: If an important theme or narrative is missing, use the "➕ Suggest New" fields at the bottom of a specific theme block or at the very bottom of the page.
+- **Jump to Context**: If a narrative's wording confuses you, click the **"View on Articles"** button next to it. This redirects you to real-world textual examples of that narrative in our database.
+- **Save**: Never forget to click the floating **"💾 Save All Changes"** button at the bottom right before navigating away to log your progress!
 """)
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Section 2: Using the Dashboard Pages
+# Page 3: Narratives on Articles
 # ═══════════════════════════════════════════════════════════════════════════
-st.header("2. Using the Dashboard Pages")
+st.header("📰 Narratives on Articles")
 
 st.markdown("""
-The MigNar platform includes three main dashboard views for analyzing migration narratives across different dimensions.
+**Purpose**:  
+This page allows you to dig into the raw data. It shows actual news articles and parliamentary transcripts alongside the specific text fragments the AI models highlighted to justify their extractions, allowing you to both view and understand narratives in potential contexts and grade empirical AI performance.
+
+**Key Functionalities & How to Use**:
+- **Filter the Corpus**: Use the sidebar to drill down by `Source Table`, `Stance`, `Theme`, or `Meso Narrative`. You can also use the minimum agreement slider (e.g., "Only show me articles where at least 3 models agreed on this narrative").
+- **Select an Article**: Use the "Record" dropdown to pick a specific article or transcript to review.
+- **Review Highlights**: The body of the article will feature colored highlights. Hovering your mouse over a highlighted text segment reveals exactly which AI model flagged it and what Meso Narrative it mapped to.
+- **Validate the AI (Grade the Models)**: 
+    - **Stance Verification**: Scroll to the bottom to see how the group of models voted on the overarching "Stance" (`Open`, `Restrictive`, `Neutral`, and `Irrelevant`) of the document, and log your independent human judgment to grade them.
+    - **Narrative Verification**: For each extracted Meso Narrative, review the highlighted text, then assign the model a score from 0 to 5 based on how perfectly it interpreted the text segment. 
+""")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Dashboards Section
+# ═══════════════════════════════════════════════════════════════════════════
+st.header("📊⚖️📈 Analytic Dashboards")
+
+st.markdown("""
+The platform includes three distinct dashboards to analyse the migration discourse from different analytical angles. 
 """)
 
 st.subheader("📊 Aggregative Dashboard")
 st.markdown("""
-**Purpose**: View overall volume and distribution of narratives across all articles in your dataset.
+**Purpose**:  
+Get a broad, big-picture understanding of the total volume and distribution of stances, themes, and meso narratives across the entire corpus.
 
-**What you can do**:
-- See the total count of articles by stance (pro-migration, anti-migration, neutral)
-- Explore which themes appear most frequently
-- Identify the most common meso narratives
-- Compare narrative volume across different news sources
-- Filter by model (if multiple AI models were used for analysis)
-
-**Best for**: Getting a big-picture understanding of what narratives dominate the discourse.
-
-**How to use**:
-1. Select your preferred model from the sidebar (if applicable)
-2. Choose a date range to focus on specific time periods
-3. Optionally filter by news source domain
-4. View the bar charts showing top themes and meso narratives by article count
+**Key Functionalities & How to Use**:
+- **Filters**: Use the sidebar to restrict the data to a specific `Model` (or the `Ensemble` consensus), a `Taxonomy Version`, a `Date range`, and specific `Source domains`.
+- **Macros**: Adjust the "Min articles per label" to hide infrequent, noisy narrative detections, and adjust the "Top N items" to expand or contract the bar charts.
+- **Visuals**: 
+  - **Stance Bubble Chart**: See how different media outlets lean overall (Open vs. Restrictive).
+  - **Bar Charts**: Instantly identify the most common Themes and Meso Narratives within your filtered parameters.
 """)
 
 st.subheader("⚖️ Comparative Dashboard")
 st.markdown("""
-**Purpose**: Compare how narratives differ across different categories (e.g., news sources, stances, time periods).
+**Purpose**:  
+Contrast how different groups, media sources, or time periods discuss migration. For example, you can compare narrative usage between left-leaning and right-leaning UK media.
 
-**What you can do**:
-- Compare theme distribution between pro-migration and anti-migration stances
-- Analyze how different news outlets frame migration differently
-- Identify narratives unique to certain sources vs. those appearing everywhere
-- Spot narrative contrasts and similarities across dimensions
-
-**Best for**: Understanding diversity and polarization in migration discourse.
-
-**How to use**:
-1. Select the comparison dimension (e.g., stance, source)
-2. Choose specific categories to compare
-3. Examine side-by-side visualizations showing narrative differences
-4. Look for exclusive narratives (appearing in only one category) vs. shared narratives
+**Key Functionalities & How to Use**:
+- **Define Filter A & Filter B**: In the sidebar, set up two distinct groups. For instance, set Filter A to right-wing domains and Filter B to left-wing domains.
+- **Adjust Macros**: Set up a minimum support threshold to ensure you are only comparing narratives with sufficient data.
+- **Analyse Divergence**: The dashboard generates diverging bar charts for both Themes and Meso Narratives. Bars extending to the left show narratives structurally favoured by Group A, while bars to the right show those heavily favoured by Group B.
 """)
 
 st.subheader("📈 Temporal Dashboard")
 st.markdown("""
-**Purpose**: Track how narratives change over time.
+**Purpose**:  
+Track the temporal evolution, rise, and decline of specific stances, themes, and meso narratives over time to understand how real-world events shape the discourse.
 
-**What you can do**:
-- See trends in stance distribution over months or years
-- Identify when specific themes or narratives emerge or decline
-- Correlate narrative shifts with real-world events
-- Analyze seasonality or cyclical patterns in migration discourse
-
-**Best for**: Understanding narrative evolution and event-driven changes.
-
-**How to use**:
-1. Select the time aggregation level (daily, weekly, monthly, yearly)
-2. Choose specific themes or meso narratives to track
-3. Use the date range selector to zoom into periods of interest
-4. Examine line charts showing narrative frequency over time
+**Key Functionalities & How to Use**:
+- **Granularity & Metrics**: Toggle between `Monthly` or `Yearly` granularity. Choose to view the Y-axis as raw `Count` (absolute volume) or `Percentage` (prevalence relative to the total discourse in that period).
+- **Domain Split**: Note that you can filter the domain for "Stance" independently from the domain for "Narratives".
+- **Interactive Line Charts**: Hover over lines to trace how specific issues (e.g., discussions around border security or specific policies) spike or diminish across your selected date range.
 """)
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Section 3: Annotation Instructions
+# Page 7: Feedback
 # ═══════════════════════════════════════════════════════════════════════════
-st.header("3. Annotation Instructions for Taxonomy Quality Control", anchor="annotation-guide")
+st.header("💬 Feedback")
 
 st.markdown("""
-The **Narratives Taxonomy** page allows you to review and rate the quality of meso narratives identified by our AI system. 
-Your annotations help improve the taxonomy by identifying issues with how narratives have been extracted or categorized.
+**Purpose**:  
+A direct line to the platform developers to report bugs, suggest features, flag usability issues, or share general thoughts about the data quality.
+
+**Key Functionalities & How to Use**:
+- **Submit Feedback (Authentication Required)**: Select the type of feedback (Bug, Feature, Usability, etc.), link it to a specific page if applicable, mark the severity, and provide a clear description.
+- **Track Submissions**: Use the "My Submissions" tab to view the history of your feedback and see its current status (e.g., Open, In Progress, Resolved).
 """)
-
-st.info("**💡 Before you start**: Sign in using the main page to save your annotations. Unsigned users can browse but cannot save ratings.")
-
-st.subheader("🏷️ What Each Label Means")
-
-st.markdown("""
-When reviewing each meso narrative, you'll choose from the following quality labels:
-
----
-
-### ✅ **Good**
-**Select this when**: The narrative is well-formed, specific enough to be meaningful, distinct from others, and correctly categorized.
-
-**Criteria**:
-- ✓ Clear and coherent statement
-- ✓ Represents a specific, identifiable storyline
-- ✓ Is distinct from other narratives (not a duplicate)
-- ✓ Has appropriate specificity (not too generic, not too narrow)
-- ✓ Placed in the correct theme
-
-**Example**:
-- Theme: *Economic Impact*
-- Meso Narrative: "Migrants contribute to economic growth through entrepreneurship"
-- ✅ This is **good** because it's specific, actionable, and clearly distinct.
-
----
-
-### 🔄 **Duplicate Narrative**
-**Select this when**: This narrative is essentially the same as another narrative already in the taxonomy, just worded differently.
-
-**Criteria**:
-- Two or more narratives express the same core idea
-- Minor wording differences don't change the meaning
-- Should be merged into a single narrative
-
-**Example**:
-- Narrative A: "Migrants take jobs from native workers"
-- Narrative B: "Migrants compete with locals for employment"
-- 🔄 These are **duplicates** — they express the same underlying narrative.
-
-**What happens**: Duplicate narratives will be reviewed for merging in future taxonomy revisions.
-
----
-
-### 🔬 **Too Specific**
-**Select this when**: The narrative is so narrowly defined that it applies to very few articles or situations.
-
-**Criteria**:
-- Overly detailed or contextually limited
-- References specific events, individuals, or locations unnecessarily
-- Could be generalized without losing meaning
-- Has very low article count relative to similar narratives
-
-**Example**:
-- ❌ Too specific: "Boris Johnson's 2019 proposal to limit EU migration after Brexit"
-- ✅ Better: "Post-Brexit immigration policy proposals"
-
-**Why it matters**: Meso narratives should be generalizable across multiple contexts while still being meaningful.
-
----
-
-### 🌐 **Too Generic**
-**Select this when**: The narrative is so broad or vague that it doesn't provide meaningful analytical value.
-
-**Criteria**:
-- Could apply to almost any migration discussion
-- Lacks specificity about what's actually being said
-- Essentially just restates the theme itself
-- Doesn't identify a distinct storyline
-
-**Example**:
-- ❌ Too generic: "Migration is discussed in political debates"
-- ✅ Better: "Politicians exploit migration fears for electoral gain"
-
-**Why it matters**: Generic narratives don't help us understand the actual arguments being made.
-
----
-
-### ⚠️ **Leave Blank**
-**Select this when**: You're unsure, need more context, or want to skip this narrative.
-
-**When to use**:
-- You don't have enough information to judge
-- You need to see example articles first
-- The narrative is edge-case and you're uncertain
-
-**Note**: Blank annotations are not saved to the database.
-
----
-""")
-
-st.subheader("📋 Annotation Workflow")
-
-st.markdown("""
-**Step-by-step process**:
-
-1. **Sign in** via the main page (required to save annotations)
-
-2. **Navigate** to the "Narratives Taxonomy" page
-
-3. **Select** the revision you want to review (usually the latest)
-
-4. **Browse** through themes — they're sorted by article count (most common first)
-
-5. **For each narrative**:
-   - Read the meso narrative text
-   - Check the article count (how many articles contain this narrative)
-   - Click "View on Articles" to see examples if needed
-   - Select the appropriate quality label from the dropdown
-   - Your choice is **automatically saved** when you select an option
-
-6. **Track progress** — Your annotation count is shown at the bottom of the page
-
-7. **Use filters** to focus:
-   - Filter by source domain to see outlet-specific narratives
-   - Filter by model to compare different AI analyses
-   - Adjust "Min count" to hide rare narratives (marked as "NEW")
-
----
-
-### 🎯 Tips for Good Annotation
-
-- **View examples**: When in doubt, click "View on Articles" to see how the narrative appears in actual articles
-- **Think hierarchically**: Remember that meso narratives should be more specific than their parent theme, but not so specific they only apply once
-- **Consider mergeability**: If two narratives could be combined without loss of meaning, mark one as duplicate
-- **Be consistent**: Try to apply the same standards across all narratives in a session
-- **Take breaks**: Annotation fatigue can reduce quality — review in focused sessions
-
----
-
-### 🔢 Understanding "NEW" Narratives
-
-Narratives marked with a **(NEW)** tag weren't in the original taxonomy but appeared frequently in the data. These might be:
-- Genuinely new storylines that should be added
-- Variations of existing narratives (potential duplicates)
-- Overly specific phrases that shouldn't be separate narratives
-- Noise from the extraction process
-
-Pay special attention to NEW narratives — your annotations are especially valuable here!
-
----
-
-### ❓ Questions or Issues?
-
-If you encounter narratives that don't fit any category, or if you notice systemic issues with the taxonomy, please contact the research team.
-""")
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Additional Resources
-# ═══════════════════════════════════════════════════════════════════════════
-st.header("4. Additional Resources")
-
-st.markdown("""
-### 🔗 Quick Links
-- **Narratives Taxonomy**: Review and annotate narrative quality
-- **Narratives on Articles**: Explore individual articles and their extracted narratives
-- **Aggregative Dashboard**: View overall narrative distribution
-- **Comparative Dashboard**: Compare narratives across categories
-- **Temporal Dashboard**: Track narrative trends over time
-
-### 📧 Support
-For technical issues, questions about the methodology, or suggestions for improvement, please contact the MigNar research team.
-
-### 🔄 Taxonomy Versions
-The taxonomy is versioned and periodically updated based on:
-- New data collection
-- Annotator feedback
-- Refinement of extraction algorithms
-- Merging of duplicate narratives
-
-Always check which revision you're working with on the Taxonomy page.
-""")
-
-st.divider()
-
-st.caption("MigNar Platform — Migration Narratives Analysis Tool")
