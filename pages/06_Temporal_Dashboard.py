@@ -203,7 +203,7 @@ else:
 
 picked = st.sidebar.date_input(
     "Date range",
-    value=(date(2000, 1, 1), max_dt),
+    value=(date(2016, 1, 1), max_dt),
     min_value=min_dt,
     max_value=max_dt,
     help="Limits all temporal series to periods whose month lies inside this interval.",
@@ -374,6 +374,24 @@ else:
 # -------------------------------------
 # Themes
 # -------------------------------------
+DEFAULT_THEMES = [
+    "EU migration to and from the UK",
+    # "international students in higher education",
+    # "legal vs. illegal immigration",
+    "migrants and crimes",
+    # "migrants and housing",
+    "detention and deportation of migrants",
+    "migrants and human rights",
+    # "migrants and national identity",
+    # "migrants and racism/xenophobia",
+    "migrants, economy, and labour market",
+    "small boats and Channel crossings",
+    "work visas and sponsorship",
+    # "migrants and healthcare system",
+    "public opinion on migration",
+]
+
+
 st.subheader("Themes Over Time")
 
 if themes_p.empty or narrative_totals_per_period.empty:
@@ -400,9 +418,9 @@ else:
     )
 
     selected_themes = st.multiselect(
-        "Select themes (empty = top 8 auto)",
+        "Select themes",
         options=overall_themes,
-        default=overall_themes[:8],
+        default=DEFAULT_THEMES,
         help="Choose which themes to plot over time. If nothing is selected, the top 8 themes by volume are used.",
     )
 
@@ -437,9 +455,33 @@ else:
 
     st.altair_chart(line, width="stretch")
 
-# -------------------------------------
+# ------------------------------------------------------------
 # Meso narratives
-# -------------------------------------
+# ------------------------------------------------------------
+DEFAULT_MESO_NARRATIVES = [
+    "EU migration enhances labour mobility and economic growth",
+    "EU migration takes jobs from local workers",
+    "Most migrants are law-abiding citizens",
+    "Migrants are involved in violent crimes",
+    "Migrants are involved in child abuse scandals",
+    "Migrants sell illegal drugs",
+    "Migrants are involved in fraud",
+    "Current detention practices violate human rights",
+    "Deportations separate families and harm children",
+    "Current detention practices are legitimate and necessary",
+    "Migrants face systemic human rights abuses",
+    "Human rights claims by migrants are often exaggerated",
+    "Migrants fill critical labour shortages",
+    "Migrants take jobs away from local workers",
+    "Stopping the boats should be a government priority",
+    "People crossing the Channel are desperate, not criminals",
+    "Migrants burden the healthcare system",
+    "Migrants are necessary for the NHS to function",
+    "The social care sector would collapse without migrant workers",
+    "Public opinion supports welcoming migrants",
+    "Public opinion supports restricting migration",
+]
+
 st.subheader("Meso Narratives Over Time")
 
 if meso_p.empty or narrative_totals_per_period.empty:
@@ -465,15 +507,18 @@ else:
         .index.tolist()
     )
 
+    available_meso_options = meso_ts["meso_narrative"].dropna().unique().tolist()
+    
     selected_meso = st.multiselect(
-        "Select meso narratives (empty = top 5 auto)",
-        options=meso_ts["meso_narrative"].dropna().unique().tolist(),
-        default=top_meso,
-        help="Choose which meso narratives to plot over time. If nothing is selected, the top 5 narratives by volume are used.",
+        "Select meso narratives",
+        options=available_meso_options,
+        default=[m for m in DEFAULT_MESO_NARRATIVES if m in available_meso_options],
+        help="Choose which meso narratives to plot over time. If nothing is selected, the top narratives by volume are used.",
     )
 
     if not selected_meso:
-        selected_meso = top_meso
+        # Fallback to top volume narratives if selection is cleared
+        selected_meso = top_meso 
 
     plot_meso = meso_ts[meso_ts["meso_narrative"].isin(selected_meso)].copy()
 

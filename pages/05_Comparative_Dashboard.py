@@ -11,7 +11,6 @@ st.set_page_config(page_title="Comparative Dashboard",
 from lib.sidebar_style import apply_sidebar_names
 apply_sidebar_names()
 
-
 st.title("Comparative Dashboard")
 
 # ------------------------------------------------------------
@@ -102,7 +101,6 @@ meso_df = by_version(meso_df)
 
 st.sidebar.markdown("---")
 
-
 # ------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------
@@ -171,7 +169,7 @@ def meso_counts(meso_slice: pd.DataFrame) -> pd.DataFrame:
     return g
 
 # ------------------------------------------------------------
-# Sidebar controls (Filter A, Filter B, then Macros)
+# Sidebar controls (Filter A, Filter B)
 # ------------------------------------------------------------
 # Available models (union from stance/themes/meso)
 available_models = sorted(set(
@@ -199,7 +197,7 @@ selected_model_A = st.sidebar.selectbox(
 )
 period_1_in = st.sidebar.date_input(
     "Period (A)",
-    value=(date(2000, 1, 1), max_dt),
+    value=(date(2016, 1, 1), max_dt),
     min_value=min_dt,
     max_value=max_dt,
     key="period_1",
@@ -207,7 +205,6 @@ period_1_in = st.sidebar.date_input(
 )
 period_1 = _norm_date_input(period_1_in)
 domains_1_options = pick_domains_for_range([themes_df, stance_df, meso_df], selected_model_A, period_1[0], period_1[1])
-# Default to UK left-wing outlets that exist in the data
 default_1 = [d for d in UK_LEFT_WING if d in domains_1_options] or domains_1_options[:3]
 domains_1_selected = st.sidebar.multiselect(
     "Source domain (A)",
@@ -218,7 +215,7 @@ domains_1_selected = st.sidebar.multiselect(
 )
 domains_1 = set(domains_1_selected) if domains_1_selected else None
 
-# Filter B (Right-wing UK media)
+# Filter B
 st.sidebar.markdown("#### Filter B")
 selected_model_B = st.sidebar.selectbox(
     "Model (B)",
@@ -229,7 +226,7 @@ selected_model_B = st.sidebar.selectbox(
 )
 period_2_in = st.sidebar.date_input(
     "Period (B)",
-    value=(date(2000, 1, 1), max_dt),
+    value=(date(2016, 1, 1), max_dt),
     min_value=min_dt,
     max_value=max_dt,
     key="period_2",
@@ -237,7 +234,6 @@ period_2_in = st.sidebar.date_input(
 )
 period_2 = _norm_date_input(period_2_in)
 domains_2_options = pick_domains_for_range([themes_df, stance_df, meso_df], selected_model_B, period_2[0], period_2[1])
-# Default to UK right-wing outlets that exist in the data
 default_2 = [d for d in UK_RIGHT_WING if d in domains_2_options] or domains_2_options[:3]
 domains_2_selected = st.sidebar.multiselect(
     "Source domain (B)",
@@ -248,30 +244,7 @@ domains_2_selected = st.sidebar.multiselect(
 )
 domains_2 = set(domains_2_selected) if domains_2_selected else None
 
-# Macros
-st.sidebar.subheader("Macros")
-min_support = st.sidebar.slider(
-    "Min combined article support",
-    0,
-    1000,
-    100,
-    1,
-    help="Keeps only labels whose combined article count across Filter A and Filter B is at least this value.",
-)
-top_n = st.sidebar.slider(
-    "Top N items (by |difference|)",
-    5,
-    40,
-    20,
-    1,
-    help="Number of labels shown in contrast charts, ranked by absolute prevalence difference.",
-)
-
-
 st.sidebar.markdown("---")
-# if st.sidebar.button("🧹 Clear Cache (if slow)"):
-#     st.cache_data.clear()
-#     st.success("Cache cleared! Refresh to reload data.")
 
 # ------------------------------------------------------------
 # Compute contrast using aggregates
@@ -295,7 +268,7 @@ meso_a_counts   = meso_counts(meso_a).rename(columns={"articles": "articles_1"})
 meso_b_counts   = meso_counts(meso_b).rename(columns={"articles": "articles_2"})
 
 # ------------------------------------------------------------
-# Themes contrast
+# Themes contrast setup
 # ------------------------------------------------------------
 themes_contrast = pd.merge(themes_a_counts, themes_b_counts, on="narrative theme", how="outer").fillna(0)
 if not themes_contrast.empty:
@@ -305,10 +278,9 @@ if not themes_contrast.empty:
     themes_contrast["prevalence_2"] = (themes_contrast["articles_2"] / total_b) if total_b > 0 else 0.0
     themes_contrast["diff_prevalence"] = themes_contrast["prevalence_2"] - themes_contrast["prevalence_1"]
     themes_contrast["support_articles"] = themes_contrast["articles_1"] + themes_contrast["articles_2"]
-    if min_support > 0:
-        themes_contrast = themes_contrast[themes_contrast["support_articles"] >= int(min_support)].copy()
+
 # ------------------------------------------------------------
-# Meso narratives contrast
+# Meso narratives contrast setup
 # ------------------------------------------------------------
 meso_contrast = pd.merge(meso_a_counts, meso_b_counts, on="meso narrative", how="outer").fillna(0)
 if not meso_contrast.empty:
@@ -318,8 +290,6 @@ if not meso_contrast.empty:
     meso_contrast["prevalence_2"] = (meso_contrast["articles_2"] / total_b) if total_b > 0 else 0.0
     meso_contrast["diff_prevalence"] = meso_contrast["prevalence_2"] - meso_contrast["prevalence_1"]
     meso_contrast["support_articles"] = meso_contrast["articles_1"] + meso_contrast["articles_2"]
-    if min_support > 0:
-        meso_contrast = meso_contrast[meso_contrast["support_articles"] >= int(min_support)].copy()
 
 # If both empty after filtering, stop
 if (themes_contrast is None or themes_contrast.empty) and (meso_contrast is None or meso_contrast.empty):
@@ -346,91 +316,151 @@ st.markdown(legend_html, unsafe_allow_html=True)
 # ------------------------------------------------------------
 # Plot: Themes diverging bar (B minus A)
 # ------------------------------------------------------------
+DEFAULT_THEMES = [
+    "EU migration to and from the UK",
+    "international students in higher education",
+    "legal vs. illegal immigration",
+    "migrants and crimes",
+    "migrants and housing",
+    "detention and deportation of migrants",
+    "migrants and human rights",
+    "migrants and national identity",
+    "migrants and racism/xenophobia",
+    "migrants, economy, and labour market",
+    "small boats and Channel crossings",
+    "work visas and sponsorship",
+    "migrants and healthcare system",
+    "public opinion on migration",
+]
+
+st.subheader("Contrast in Narrative Themes (Filter B minus Filter A)")
+
 if not themes_contrast.empty:
-    plot_df = themes_contrast.copy()
-    plot_df["abs_diff"] = plot_df["diff_prevalence"].abs()
-    top_themes = plot_df.sort_values("abs_diff", ascending=False).head(int(top_n)).copy()
-
-    melt_themes = top_themes[["narrative theme", "prevalence_1", "prevalence_2", "diff_prevalence"]].copy().reset_index(drop=True)
-    melt_themes = melt_themes.melt(
-        id_vars=["narrative theme", "diff_prevalence"],
-        value_vars=["prevalence_1", "prevalence_2"],
-        var_name="side_var",
-        value_name="prevalence"
+    overall_themes = themes_contrast.sort_values("support_articles", ascending=False)["narrative theme"].tolist()
+    
+    selected_themes = st.multiselect(
+        "Select themes",
+        options=overall_themes,
+        default=[t for t in DEFAULT_THEMES if t in overall_themes],
+        help="Choose which themes to include in the contrast chart. All selected themes will be displayed.",
     )
-    melt_themes["side_key"] = melt_themes["side_var"].map({"prevalence_1": "Filter A", "prevalence_2": "Filter B"})
-    melt_themes["signed_prev"] = melt_themes.apply(lambda r: -r["prevalence"] if r["side_key"] == "Filter A" else r["prevalence"], axis=1)
 
-    theme_order = melt_themes.drop_duplicates("narrative theme").sort_values("diff_prevalence")["narrative theme"].tolist()
-    max_val_t = float(melt_themes["prevalence"].max() or 0.0)
-    x_limit_t = (max_val_t * 1.15) if max_val_t > 0 else 0.05
+    if selected_themes:
+        plot_df = themes_contrast[themes_contrast["narrative theme"].isin(selected_themes)].copy()
+            
+        melt_themes = plot_df[["narrative theme", "prevalence_1", "prevalence_2", "diff_prevalence"]].copy().reset_index(drop=True)
 
-    themes_bar = alt.Chart(melt_themes).mark_bar().encode(
-        x=alt.X("signed_prev:Q", title="Prevalence (% of relevant articles)", scale=alt.Scale(domain=[-x_limit_t, x_limit_t], nice=False), axis=alt.Axis(format=".0%")),
-        y=alt.Y("narrative theme:N", sort=theme_order, title="Theme", axis=alt.Axis(labelLimit=0, labelOverlap=False, titlePadding=120)),
-        color=alt.Color("side_key:N", title=None, scale=alt.Scale(domain=["Filter A", "Filter B"], range=["#d7191c", "#2c7bb6"]), legend=alt.Legend(orient="top")),
-        tooltip=[
-            alt.Tooltip("narrative theme:N", title="Theme"),
-            alt.Tooltip("side_key:N", title="Filter"),
-            alt.Tooltip("prevalence:Q", title="Prevalence", format=".1%"),
-            alt.Tooltip("diff_prevalence:Q", title="(B − A) pp", format=".1%"),
-        ],
-    )
-    st.subheader("Contrast in Narrative Themes (Filter B minus Filter A)")
-    st.altair_chart(themes_bar, width="stretch")
+        melt_themes = melt_themes.melt(
+            id_vars=["narrative theme", "diff_prevalence"],
+            value_vars=["prevalence_1", "prevalence_2"],
+            var_name="side_var",
+            value_name="prevalence"
+        )
+        melt_themes["side_key"] = melt_themes["side_var"].map({"prevalence_1": "Filter A", "prevalence_2": "Filter B"})
+        melt_themes["signed_prev"] = melt_themes.apply(lambda r: -r["prevalence"] if r["side_key"] == "Filter A" else r["prevalence"], axis=1)
+
+        theme_order = melt_themes.drop_duplicates("narrative theme").sort_values("diff_prevalence")["narrative theme"].tolist()
+        max_val_t = float(melt_themes["prevalence"].max() or 0.0)
+        x_limit_t = (max_val_t * 1.15) if max_val_t > 0 else 0.05
+
+        themes_bar = alt.Chart(melt_themes).mark_bar().encode(
+            x=alt.X("signed_prev:Q", title="Prevalence (% of relevant articles)", scale=alt.Scale(domain=[-x_limit_t, x_limit_t], nice=False), axis=alt.Axis(format=".0%")),
+            y=alt.Y("narrative theme:N", sort=theme_order, title="Theme", axis=alt.Axis(labelLimit=0, labelOverlap=False, titlePadding=120)),
+            color=alt.Color("side_key:N", title=None, scale=alt.Scale(domain=["Filter A", "Filter B"], range=["#d7191c", "#2c7bb6"]), legend=alt.Legend(orient="top")),
+            tooltip=[
+                alt.Tooltip("narrative theme:N", title="Theme"),
+                alt.Tooltip("side_key:N", title="Filter"),
+                alt.Tooltip("prevalence:Q", title="Prevalence", format=".1%"),
+                alt.Tooltip("diff_prevalence:Q", title="(B − A) pp", format=".1%"),
+            ],
+        )
+        st.altair_chart(themes_bar, width="stretch")
+    else:
+        st.info("Please select at least one theme to generate the chart.")
 
 # ------------------------------------------------------------
 # Plot: Meso narratives diverging bar (B minus A)
 # ------------------------------------------------------------
+DEFAULT_MESO_NARRATIVES = [
+    "EU migration enhances labour mobility and economic growth",
+    "EU migration takes jobs from local workers",
+    "Most migrants are law-abiding citizens",
+    "Migrants are involved in violent crimes",
+    "Migrants are involved in child abuse scandals",
+    "Migrants sell illegal drugs",
+    "Migrants are involved in fraud",
+    "Current detention practices violate human rights",
+    "Deportations separate families and harm children",
+    "Current detention practices are legitimate and necessary",
+    "Migrants face systemic human rights abuses",
+    "Human rights claims by migrants are often exaggerated",
+    "Migrants fill critical labour shortages",
+    "Migrants take jobs away from local workers",
+    "Stopping the boats should be a government priority",
+    "People crossing the Channel are desperate, not criminals",
+    "Migrants burden the healthcare system",
+    "Migrants are necessary for the NHS to function",
+    "The social care sector would collapse without migrant workers",
+    "Public opinion supports welcoming migrants",
+    "Public opinion supports restricting migration",
+]
+
+st.subheader("Contrast in Meso Narratives (Filter B minus Filter A)")
+
 if not meso_contrast.empty:
-    meso_plot = meso_contrast.copy()
-    meso_plot["abs_diff"] = meso_plot["diff_prevalence"].abs()
-    top_meso = meso_plot.sort_values("abs_diff", ascending=False).head(int(top_n)).copy()
-
-    melt_meso = top_meso[["meso narrative", "prevalence_1", "prevalence_2", "diff_prevalence"]].copy().reset_index(drop=True)
-    melt_meso = melt_meso.melt(
-        id_vars=["meso narrative", "diff_prevalence"],
-        value_vars=["prevalence_1", "prevalence_2"],
-        var_name="side_var",
-        value_name="prevalence"
+    overall_meso = meso_contrast.sort_values("support_articles", ascending=False)["meso narrative"].tolist()
+    
+    selected_meso = st.multiselect(
+        "Select meso narratives",
+        options=overall_meso,
+        default=[m for m in DEFAULT_MESO_NARRATIVES if m in overall_meso],
+        help="Choose which meso narratives to include in the contrast chart. All selected narratives will be displayed.",
     )
-    melt_meso["side_key"] = melt_meso["side_var"].map({"prevalence_1": "Filter A", "prevalence_2": "Filter B"})
-    melt_meso["signed_prev"] = melt_meso.apply(lambda r: -r["prevalence"] if r["side_key"] == "Filter A" else r["prevalence"], axis=1)
 
-    meso_order = melt_meso.drop_duplicates("meso narrative").sort_values("diff_prevalence")["meso narrative"].tolist()
-    max_val_m = float(melt_meso["prevalence"].max() or 0.0)
-    x_limit_m = (max_val_m * 1.15) if max_val_m > 0 else 0.05
+    if selected_meso:
+        meso_plot = meso_contrast[meso_contrast["meso narrative"].isin(selected_meso)].copy()
+            
+        melt_meso = meso_plot[["meso narrative", "prevalence_1", "prevalence_2", "diff_prevalence"]].copy().reset_index(drop=True)
+        melt_meso = melt_meso.melt(
+            id_vars=["meso narrative", "diff_prevalence"],
+            value_vars=["prevalence_1", "prevalence_2"],
+            var_name="side_var",
+            value_name="prevalence"
+        )
+        melt_meso["side_key"] = melt_meso["side_var"].map({"prevalence_1": "Filter A", "prevalence_2": "Filter B"})
+        melt_meso["signed_prev"] = melt_meso.apply(lambda r: -r["prevalence"] if r["side_key"] == "Filter A" else r["prevalence"], axis=1)
 
-    meso_bar = alt.Chart(melt_meso).mark_bar().encode(
-        x=alt.X("signed_prev:Q", title="Prevalence (% of relevant articles)", scale=alt.Scale(domain=[-x_limit_m, x_limit_m], nice=False), axis=alt.Axis(format=".0%")),
-        y=alt.Y("meso narrative:N", sort=meso_order, title="Meso Narrative", axis=alt.Axis(labelLimit=0, labelOverlap=False, titlePadding=220)),
-        color=alt.Color("side_key:N", title=None, scale=alt.Scale(domain=["Filter A", "Filter B"], range=["#d7191c", "#2c7bb6"]), legend=alt.Legend(orient="top")),
-        tooltip=[
-            alt.Tooltip("meso narrative:N", title="Meso Narrative"),
-            alt.Tooltip("side_key:N", title="Filter"),
-            alt.Tooltip("prevalence:Q", title="Prevalence", format=".1%"),
-            alt.Tooltip("diff_prevalence:Q", title="(B − A) pp", format=".1%"),
-        ],
-    )
-    st.subheader("Contrast in Meso Narratives (Filter B minus Filter A)")
-    st.altair_chart(meso_bar, width="stretch")
+        meso_order = melt_meso.drop_duplicates("meso narrative").sort_values("diff_prevalence")["meso narrative"].tolist()
+        max_val_m = float(melt_meso["prevalence"].max() or 0.0)
+        x_limit_m = (max_val_m * 1.15) if max_val_m > 0 else 0.05
+
+        meso_bar = alt.Chart(melt_meso).mark_bar().encode(
+            x=alt.X("signed_prev:Q", title="Prevalence (% of relevant articles)", scale=alt.Scale(domain=[-x_limit_m, x_limit_m], nice=False), axis=alt.Axis(format=".0%")),
+            y=alt.Y("meso narrative:N", sort=meso_order, title="Meso Narrative", axis=alt.Axis(labelLimit=0, labelOverlap=False, titlePadding=220)),
+            color=alt.Color("side_key:N", title=None, scale=alt.Scale(domain=["Filter A", "Filter B"], range=["#d7191c", "#2c7bb6"]), legend=alt.Legend(orient="top")),
+            tooltip=[
+                alt.Tooltip("meso narrative:N", title="Meso Narrative"),
+                alt.Tooltip("side_key:N", title="Filter"),
+                alt.Tooltip("prevalence:Q", title="Prevalence", format=".1%"),
+                alt.Tooltip("diff_prevalence:Q", title="(B − A) pp", format=".1%"),
+            ],
+        )
+        st.altair_chart(meso_bar, width="stretch")
+    else:
+        st.info("Please select at least one meso narrative to generate the chart.")
 
 # ------------------------------------------------------------
 # Raw data expanders
 # ------------------------------------------------------------
 if not themes_contrast.empty:
-    plot_df = themes_contrast.copy()
-    plot_df["abs_diff"] = plot_df["diff_prevalence"].abs()
-    top_themes = plot_df.sort_values("abs_diff", ascending=False).head(int(top_n)).copy()
     with st.expander("Raw Themes Contrast Data"):
-        st.dataframe(top_themes[[
+        st.dataframe(themes_contrast[[
             "narrative theme",
             "articles_1", "articles_2",
             "prevalence_1", "prevalence_2",
             "diff_prevalence",
-            "abs_diff",
             "support_articles",
-        ]])
+        ]].sort_values("diff_prevalence", ascending=False))
 
 if not meso_contrast.empty:
     with st.expander("Raw Meso Contrast Data"):
@@ -440,4 +470,4 @@ if not meso_contrast.empty:
             "prevalence_1", "prevalence_2",
             "diff_prevalence",
             "support_articles",
-        ]])
+        ]].sort_values("diff_prevalence", ascending=False))
