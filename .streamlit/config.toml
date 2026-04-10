@@ -8,13 +8,11 @@ fastReruns = true
 
 [client]
 showSidebarNavigation = true
-toolbarMode = "minimal"
 
 [browser]
 gatherUsageStats = false
 
 [ui]
-hideTopBar = true
 
 [theme]
 base = "light"
