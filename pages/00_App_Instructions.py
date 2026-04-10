@@ -114,8 +114,26 @@ Track the temporal evolution, rise, and decline of specific stances, themes, and
 - **Interactive Line Charts**: Hover over lines to trace how specific issues (e.g., discussions around border security or specific policies) spike or diminish across your selected date range.
 """)
 
+
+
 # ═══════════════════════════════════════════════════════════════════════════
-# Page 7: Feedback
+# Page 7: Real-World Stats Dashboard
+# ═══════════════════════════════════════════════════════════════════════════
+st.header("🌍 𝗗𝗮𝘀𝗵𝗯𝗼𝗮𝗿𝗱: Real-World Stats")
+
+st.markdown("""
+**Purpose**:  
+Correlate real-world migration statistics (such as visa issuances, demographics, or public polling) directly against the prevalence of media and political narratives over time. This allows you to visually investigate whether the volume of specific migration narratives is driven by actual real-world events or by ideological framing.
+
+**Key Functionalities & How to Use**:
+- **Select Datasets**: Choose a real-world statistic from the sidebar (e.g., Public Opinion or Work Visas) to plot on the left Y-axis.
+- **Overlay Narratives**: Pick specific Themes and Meso Narratives to overlay on the right Y-axis. The dashboard automatically suggests relevant theoretical narratives based on the real-world dataset you selected.
+- **Four-Panel Comparison**: Simultaneously compare these dual-axis trends across four distinct domain clusters (Defaulting to Left-Leaning Media, Right-Leaning Media, Labour, and Conservatives) to see how different factions react to the same real-world data.
+- **Dynamic Scaling**: Use the sidebar sliders to constrain the time range and adjust the narrative Y-axis range (minimum and maximum percentages) to proportionally align and compare the relationship between the separate curves.
+""")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Page 8: Feedback
 # ═══════════════════════════════════════════════════════════════════════════
 st.header("💬 Feedback")
 

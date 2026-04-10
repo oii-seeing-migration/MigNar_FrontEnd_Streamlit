@@ -75,12 +75,21 @@ def apply_sidebar_names():
             visibility: visible;
         }
                 
-        /* 9. Feedback */
+        /* 10. Feedback */
+        [data-testid="stSidebarNav"] li:nth-child(10) span {
+            visibility: hidden;
+        }
+        [data-testid="stSidebarNav"] li:nth-child(10) span::before {
+            content: "💬 Feedback";
+            visibility: visible;
+        }
+
+        /* 9. RealWorldStats Dashboard */
         [data-testid="stSidebarNav"] li:nth-child(9) span {
             visibility: hidden;
         }
         [data-testid="stSidebarNav"] li:nth-child(9) span::before {
-            content: "💬 Feedback";
+            content: "🌍 𝗗𝗮𝘀𝗵𝗯𝗼𝗮𝗿𝗱: Real-World Stats";
             visibility: visible;
         }
     </style>
