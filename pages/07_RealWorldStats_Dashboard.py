@@ -9,7 +9,7 @@ from scipy.interpolate import PchipInterpolator
 st.set_page_config(page_title="Real-World Stats Dashboard", layout="wide")
 
 from lib.sidebar_style import apply_sidebar_names
-from lib.real_world_stats import load_real_world_data, DATASETS_METADATA, DEFAULT_NARRATIVES
+from lib.real_world_stats import load_real_world_data, DATASETS_METADATA, DEFAULT_NARRATIVES, DEFAULT_INCLUDED_CATEGORIES
 
 apply_sidebar_names()
 st.title("**Real-World Stats on Migration** (next to narratives)")
@@ -50,20 +50,33 @@ UK_CONS = ["UK Parliament (Con)"]
 # -------------------------------
 # Sidebar / Global Controls
 # -------------------------------
+st.sidebar.header("Time Range (X-Axis)")
+
+time_range = st.sidebar.slider("", min_value=2000, max_value=2030, value=(2016, 2026))
+
+st.sidebar.markdown("---")
+
 st.sidebar.header("Real-World Settings (Left Y-Axis)")
 rw_stat_options = list(DATASETS_METADATA.keys())
-selected_rw_stat = st.sidebar.selectbox("Real-World Stat Dataset", options=rw_stat_options)
+selected_rw_stat = st.sidebar.selectbox("Real-World Stat Dataset", options=rw_stat_options, index=rw_stat_options.index("Offence Convictions")  if "Offence Convictions" in rw_stat_options else 0)
 
 rw_data = load_real_world_data(selected_rw_stat, data_dir=os.path.join(DATA_DIR, "real-stats"))
 
 if not rw_data.empty:
-    total_cols = [c for c in rw_data.columns if "Total" in c or "All" in c]
-    default_cats = total_cols if total_cols else list(rw_data.columns[:1])
-    selected_categories = st.sidebar.multiselect("Included Line Categories", options=rw_data.columns, default=default_cats)
+    # 1. Get the configured defaults for this dataset
+    configured_defaults = DEFAULT_INCLUDED_CATEGORIES.get(selected_rw_stat, [])
+    
+    # 2. Filter out any defaults that aren't actually in the dataframe's columns
+    valid_defaults = [cat for cat in configured_defaults if cat in rw_data.columns]
+    
+    # 3. Fallback: If no valid defaults found, just pick the first column
+    if not valid_defaults:
+        valid_defaults = list(rw_data.columns[:1])
+        
+    selected_categories = st.sidebar.multiselect("Included Line Categories", options=rw_data.columns, default=valid_defaults)
 else:
     selected_categories = []
 
-time_range = st.sidebar.slider("Time Range (X-Axis)", min_value=2000, max_value=2030, value=(2016, 2026))
 
 st.sidebar.markdown("---")
 st.sidebar.header("Narrative Settings (Right Y-Axis)")
@@ -97,6 +110,9 @@ defaults = DEFAULT_NARRATIVES.get(selected_rw_stat, {"themes": [], "mesos": []})
 
 # Filter valid themes based on minimum count
 theme_base = themes_df[themes_df["model"] == selected_model]
+if selected_version != "(All versions)":
+    theme_base = theme_base[pd.to_numeric(theme_base["version"], errors="coerce") == int(selected_version)]
+
 theme_counts = theme_base.groupby("theme")["count"].sum()
 valid_themes = sorted(theme_counts[theme_counts >= NEW_MIN_COUNT].index.tolist())
 
@@ -108,6 +124,10 @@ selected_themes = st.sidebar.multiselect(
 
 # Filter Meso narratives based on selected themes AND minimum count
 meso_base = meso_df[meso_df["model"] == selected_model]
+if selected_version != "(All versions)":
+    meso_base = meso_base[pd.to_numeric(meso_base["version"], errors="coerce") == int(selected_version)]
+
+
 if selected_themes:
     # If themes are selected, only show mesos that belong to those themes
     if "theme" in meso_base.columns:
@@ -185,19 +205,24 @@ def draw_dual_chart(domains_list):
     if not rw_data.empty and len(selected_categories) > 0:
         s_slice = rw_data.loc[(rw_data.index >= time_range[0]) & (rw_data.index <= time_range[1])]
         
-        gray_styles = [('gray', 'dashed'), ('#666666', 'dotted'), ('#999999', 'dashdot')]
+        stat_colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#8c564b", "#e377c2", "#17becf", "#bcbd22"] 
         style_idx = 0
         
         for cat in selected_categories:
             if cat in s_slice.columns:
                 x_p, y_p, x_s, y_s = get_smoothed_curves(s_slice.index.values, s_slice[cat].values)
                 
-                is_tot = "Total" in cat or "All" in cat
-                c_col, l_styl, l_wid, m_size = ("#111111", "solid", 4.5, 100) if is_tot else (gray_styles[style_idx % len(gray_styles)][0], gray_styles[style_idx % len(gray_styles)][1], 3, 75)
-                if not is_tot: style_idx += 1
+                c_col = stat_colors[style_idx % len(stat_colors)]
+                l_styl = "solid"  
+                l_wid = 4.5        
+                m_size = 100
+                style_idx += 1
                 
+                # Plot the line and scatter points
                 ax1.plot(x_s, y_s, color=c_col, linestyle=l_styl, linewidth=l_wid, zorder=2)
-                ax1.scatter(x_p, y_p, color=c_col, s=m_size, marker="s" if is_tot else "^", edgecolor='white', linewidth=0.8, zorder=3)
+                ax1.scatter(x_p, y_p, color=c_col, s=m_size, marker="s", edgecolor='white', linewidth=0.8, zorder=3)
+                
+                # Legend formatting
                 ax1.plot([], [], color=c_col, linestyle=l_styl, linewidth=l_wid, label=f"Stat: {cat}")
 
     def fmt_cn(x, pos):
@@ -234,11 +259,12 @@ def draw_dual_chart(domains_list):
             color_idx += 1
             
             x_p, y_p, x_s, y_s = get_smoothed_curves(df_n["year"].values, df_n["value"].values)
-            ax2.plot(x_s, y_s, color=c_color, linestyle="solid", linewidth=3, zorder=4)
-            ax2.scatter(x_p, y_p, color=c_color, s=70, marker="o", edgecolor='white', linewidth=0.8, zorder=5)
+            # Make the narrative lines thin and dashed
+            ax2.plot(x_s, y_s, color=c_color, linestyle="dashed", linewidth=2, zorder=4)
+            ax2.scatter(x_p, y_p, color=c_color, s=40, marker="o", edgecolor='white', linewidth=0.6, zorder=5)
             
             short_n = n_name if len(n_name) < 40 else n_name[:40] + "..."
-            ax2.plot([], [], color=c_color, linestyle="solid", linewidth=3, label=f"[{n_type.capitalize()}] {short_n}")
+            ax2.plot([], [], color=c_color, linestyle="dashed", linewidth=2, label=f"[{n_type.capitalize()}] {short_n}")
 
     ax2.set_ylabel(f'Narratives {"Prevalence" if "Percentage" in y_axis_metric else "Count"}', fontsize=13, fontweight="bold", labelpad=10)
     if "Percentage" in y_axis_metric:
