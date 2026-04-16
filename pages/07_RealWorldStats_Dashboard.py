@@ -52,7 +52,7 @@ UK_CONS = ["UK Parliament (Con)"]
 # -------------------------------
 st.sidebar.header("Time Range (X-Axis)")
 
-time_range = st.sidebar.slider("", min_value=2000, max_value=2030, value=(2016, 2026))
+time_range = st.sidebar.slider("time range", min_value=2000, max_value=2030, value=(2016, 2026))
 
 st.sidebar.markdown("---")
 

@@ -34,6 +34,10 @@ DATASETS_METADATA = {
         "source": "gov.uk - Asylum claims datasets, year ending December 2025",
         "link": "https://www.gov.uk/government/statistical-data-sets/immigration-system-statistics-data-tables"
     },
+    "Small Boat Arrivals": {
+        "source": "gov.uk - Illegal entry routes to the UK detailed dataset, year ending December 2025",
+        "link": "https://www.gov.uk/government/statistical-data-sets/immigration-system-statistics-data-tables#illegal-entry-routes"
+    }
 }
 
 # Determines what themes/mesos prepopulate the right-side macro when a dataset is chosen
@@ -46,6 +50,7 @@ DEFAULT_NARRATIVES = {
     "Sponsored Work Visas": {"themes": ["work visas and sponsorship"], "mesos": []},
     "Public Opinion (Most Important Issue)": {"themes": ["public opinion on migration"], "mesos": []},
     "Asylum Claims": {"themes": ["asylum seeking"], "mesos": []},
+    "Small Boat Arrivals": {"themes": ["small boats and Channel crossings"], "mesos": []},
 }
 
 DEFAULT_INCLUDED_CATEGORIES = {
@@ -57,6 +62,7 @@ DEFAULT_INCLUDED_CATEGORIES = {
     "Sponsored Work Visas": ["Total Sponsored Work Visas","Information and communication", "Professional, scientific and technical activities", "Manufacturing","Construction", "Human health and social work activities"],
     "Public Opinion (Most Important Issue)": ["Immigration","NHS", "Economy", "EU", "Housing", "Defence"],
     "Asylum Claims": ["Ukraine", "Iran", "Total Asylum Claims", "Somalia", "Syria", "Eritrea"],
+    "Small Boat Arrivals": ["Total Small Boat Arrivals"],
 }
 
 
@@ -168,5 +174,19 @@ def load_real_world_data(dataset_name, data_dir="data/real-stats/"):
             return pd.concat([total_claims, region_claims], axis=1).fillna(0)
         
         return total_claims
+    
+    elif dataset_name == "Small Boat Arrivals":
+        fp = os.path.join(data_dir, "illegal-entry-routes-to-the-uk-dataset-dec-2025.xlsx")
+        df = pd.read_excel(fp, sheet_name="Data_IER_D02", header=1)
+        
+        df["Year"] = pd.to_numeric(df["Year"], errors="coerce")
+        df["Arrivals"] = pd.to_numeric(df["Arrivals"], errors="coerce").fillna(0)
+        df = df.dropna(subset=["Year"])
+        
+        # Restrict to 2016-2025 based on the original notebook logic
+        df = df[(df["Year"] >= 2016) & (df["Year"] <= 2025)].copy()
+        df["Year"] = df["Year"].astype(int)
+        
+        return df.groupby("Year")["Arrivals"].sum().to_frame(name="Total Small Boat Arrivals")
     
     return pd.DataFrame()
