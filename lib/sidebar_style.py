@@ -94,3 +94,14 @@ def apply_sidebar_names():
         }
     </style>
     """, unsafe_allow_html=True)
+
+
+def apply_app_anonymize():
+    st.markdown("""
+    <style>
+        #MainMenu { visibility: hidden; }
+        footer { visibility: hidden; }
+        header { visibility: hidden; }
+        [data-testid="stToolbar"] { visibility: hidden; }
+    </style>
+    """, unsafe_allow_html=True)

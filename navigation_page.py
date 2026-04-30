@@ -1,3 +1,9 @@
+from lib.sidebar_style import apply_sidebar_names, apply_app_anonymize
+apply_app_anonymize()
+apply_sidebar_names()
+
+
+
 import streamlit as st
 import base64
 import json
@@ -8,8 +14,7 @@ st.set_page_config(
     layout="wide",
     page_icon=".streamlit/static/MigNar_icon.png"
 )
-from lib.sidebar_style import apply_sidebar_names
-apply_sidebar_names()
+
 
 from lib.auth import (
     get_supabase_client,
