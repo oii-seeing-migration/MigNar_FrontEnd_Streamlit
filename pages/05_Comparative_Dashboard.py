@@ -43,7 +43,7 @@ STANCE_PATH = os.path.join(DATA_DIR, "stance_monthly.parquet")
 THEMES_PATH = os.path.join(DATA_DIR, "themes_monthly.parquet")
 MESO_PATH   = os.path.join(DATA_DIR, "meso_monthly.parquet")
 
-# @st.cache_data(ttl="30m", show_spinner=True, max_entries=1)
+@st.cache_data(ttl="30m", show_spinner=True, max_entries=1)
 def load_parquets(stance_fp: str, themes_fp: str, meso_fp: str):
     def _read_parquet(fp):
         if not os.path.exists(fp):
