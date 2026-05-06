@@ -129,21 +129,23 @@ EXCLUDED_SOURCES_DEFAULT = {
 }
 
 # ── Data loaders ───────────────────────────────────────────────────────────────
-@st.cache_data(show_spinner=True, ttl="30m", max_entries=1)
-def load_meso_df(fp: str) -> pd.DataFrame:
-    if not os.path.exists(fp):
-        return pd.DataFrame(columns=["month","model","version","source_domain","theme","meso_narrative","count"])
-    df = pd.read_parquet(fp)
-    if "month" in df.columns:
-        df["month"] = df["month"].astype(str)
-    for c in ["source_domain","model","theme","meso_narrative"]:
-        if c in df.columns:
-            df[c] = df[c].fillna("").astype(str)
-    if "count" in df.columns:
-        df["count"] = pd.to_numeric(df["count"], errors="coerce").fillna(0).astype(int)
-    if "version" in df.columns:
-        df["version"] = pd.to_numeric(df["version"], errors="coerce").fillna(0).astype(int)
-    return df
+# @st.cache_data(show_spinner=True, ttl="30m", max_entries=1)
+# def load_meso_df(fp: str) -> pd.DataFrame:
+#     if not os.path.exists(fp):
+#         return pd.DataFrame(columns=["month","model","version","source_domain","theme","meso_narrative","count"])
+#     df = pd.read_parquet(fp)
+#     if "month" in df.columns:
+#         df["month"] = df["month"].astype(str)
+#     for c in ["source_domain","model","theme","meso_narrative"]:
+#         if c in df.columns:
+#             df[c] = df[c].fillna("").astype(str)
+#     if "count" in df.columns:
+#         df["count"] = pd.to_numeric(df["count"], errors="coerce").fillna(0).astype(int)
+#     if "version" in df.columns:
+#         df["version"] = pd.to_numeric(df["version"], errors="coerce").fillna(0).astype(int)
+#     return df
+
+from lib.data_loader import load_parquets
 
 @st.cache_data(show_spinner=True, ttl="30m", max_entries=1)
 def list_revisions() -> list[int]:
@@ -281,7 +283,8 @@ def batch_upsert_annotations(user: dict, revision: int, annotations: dict) -> tu
     return (success_count, fail_count, errors)
 
 # ── Load data ──────────────────────────────────────────────────────────────────
-meso_df = load_meso_df(MESO_PATH)
+# meso_df = load_meso_df(MESO_PATH)
+stance_df, themes_df, meso_df = load_parquets()
 revs = list_revisions()
 if not revs:
     st.error("No taxonomy revision files found.")
