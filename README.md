@@ -3,8 +3,10 @@
 Streamlit application to explore migration‑related narrative frames and meso narratives in UK news.
 
 ## Live App
-Access the deployed global version here:  
+Access the deployed version on Streamlit Cloud here:  
 **https://mignar.streamlit.app/**
+
+However, Streamlit Cloud service may be unstable at the time of usage. In that case, you may run the App locally:
 
 ## Local Installation & Usage
 To run this application locally on a Linux environment, follow these steps:
