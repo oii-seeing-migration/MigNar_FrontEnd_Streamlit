@@ -27,5 +27,4 @@ To run this application locally on a Linux environment, follow these steps:
    ```bash
    streamlit run navigation_page.py
 
-
 The application will be available at http://localhost:8501.
