@@ -3,13 +3,14 @@ import streamlit as st
 import altair as alt
 import pandas as pd
 from datetime import date
+from lib.sidebar_style import apply_sidebar_names
+apply_sidebar_names()
 
 st.set_page_config(page_title="Comparative Dashboard",
                    layout="wide",
                    page_icon=".streamlit/static/MigNar_icon.png")
 
-from lib.sidebar_style import apply_sidebar_names
-apply_sidebar_names()
+
 
 st.title("Comparative Dashboard")
 
@@ -38,32 +39,10 @@ UK_RIGHT_WING = [
 # ------------------------------------------------------------
 # Load precomputed aggregates from ./data (no DB round-trips)
 # ------------------------------------------------------------
-DATA_DIR = os.path.expanduser("./data")
-STANCE_PATH = os.path.join(DATA_DIR, "stance_monthly.parquet")
-THEMES_PATH = os.path.join(DATA_DIR, "themes_monthly.parquet")
-MESO_PATH   = os.path.join(DATA_DIR, "meso_monthly.parquet")
+from lib.data_loader import load_parquets
+stance_df, themes_df, meso_df = load_parquets()
 
-@st.cache_data(ttl="30m", show_spinner=True, max_entries=1)
-def load_parquets(stance_fp: str, themes_fp: str, meso_fp: str):
-    def _read_parquet(fp):
-        if not os.path.exists(fp):
-            return pd.DataFrame()
-        df = pd.read_parquet(fp)
-        if "month" in df.columns:
-            df["month"] = pd.to_datetime(df["month"] + "-01", errors="coerce")
-        if "source_domain" in df.columns:
-            df["source_domain"] = df["source_domain"].fillna("").astype(str)
-        if "model" in df.columns:
-            df["model"] = df["model"].fillna("").astype(str)
-        if "count" in df.columns:
-            df["count"] = pd.to_numeric(df["count"], errors="coerce").fillna(0).astype(int)
-        return df
-    stance_df = _read_parquet(stance_fp)
-    themes_df = _read_parquet(themes_fp)
-    meso_df = _read_parquet(meso_fp)
-    return stance_df, themes_df, meso_df
 
-stance_df, themes_df, meso_df = load_parquets(STANCE_PATH, THEMES_PATH, MESO_PATH)
 
 if themes_df.empty and meso_df.empty:
     st.error("No aggregates found. Please generate exports first (stance/themes/meso parquet files).")

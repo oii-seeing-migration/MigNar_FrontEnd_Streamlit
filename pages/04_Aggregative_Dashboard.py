@@ -2,48 +2,52 @@ import os
 import streamlit as st
 import altair as alt
 import pandas as pd
+from lib.sidebar_style import apply_sidebar_names
+apply_sidebar_names()
 
 st.set_page_config(page_title="Aggregative Dashboard",
                    layout="wide",
                    page_icon=".streamlit/static/MigNar_icon.png")
 
-from lib.sidebar_style import apply_sidebar_names
-apply_sidebar_names()
+
+from lib.data_loader import load_parquets
+
 
 st.title("Aggregative Dashboard")
 
 # ------------------------------------------------------------
 # Use precomputed aggregates from ~/data
 # ------------------------------------------------------------
-DATA_DIR = os.path.expanduser("./data")
-STANCE_PATH = os.path.join(DATA_DIR, "stance_monthly.parquet")
-THEMES_PATH = os.path.join(DATA_DIR, "themes_monthly.parquet")
-MESO_PATH = os.path.join(DATA_DIR, "meso_monthly.parquet")
+# DATA_DIR = os.path.expanduser("./data")
+# STANCE_PATH = os.path.join(DATA_DIR, "stance_monthly.parquet")
+# THEMES_PATH = os.path.join(DATA_DIR, "themes_monthly.parquet")
+# MESO_PATH = os.path.join(DATA_DIR, "meso_monthly.parquet")
 
-@st.cache_data(ttl="30m", show_spinner=True, max_entries=1)
-def load_parquets(stance_fp: str, themes_fp: str, meso_fp: str):
-    def _read_parquet(fp):
-        if not os.path.exists(fp):
-            return pd.DataFrame()
-        df = pd.read_parquet(fp)
-        # Normalize expected columns
-        if "month" in df.columns:
-            # Convert YYYY-MM string to datetime for filtering
-            df["month"] = pd.to_datetime(df["month"] + "-01", errors="coerce")
-        if "source_domain" in df.columns:
-            df["source_domain"] = df["source_domain"].fillna("").astype(str)
-        if "model" in df.columns:
-            df["model"] = df["model"].fillna("").astype(str)
-        if "count" in df.columns:
-            df["count"] = pd.to_numeric(df["count"], errors="coerce").fillna(0).astype(int)
-        return df
+# @st.cache_data(ttl="30m", show_spinner=True, max_entries=1)
+# def load_parquets(stance_fp: str, themes_fp: str, meso_fp: str):
+#     def _read_parquet(fp):
+#         if not os.path.exists(fp):
+#             return pd.DataFrame()
+#         df = pd.read_parquet(fp)
+#         # Normalize expected columns
+#         if "month" in df.columns:
+#             # Convert YYYY-MM string to datetime for filtering
+#             df["month"] = pd.to_datetime(df["month"] + "-01", errors="coerce")
+#         if "source_domain" in df.columns:
+#             df["source_domain"] = df["source_domain"].fillna("").astype(str)
+#         if "model" in df.columns:
+#             df["model"] = df["model"].fillna("").astype(str)
+#         if "count" in df.columns:
+#             df["count"] = pd.to_numeric(df["count"], errors="coerce").fillna(0).astype(int)
+#         return df
 
-    stance_df = _read_parquet(stance_fp)
-    themes_df = _read_parquet(themes_fp)
-    meso_df = _read_parquet(meso_fp)
-    return stance_df, themes_df, meso_df
+#     stance_df = _read_parquet(stance_fp)
+#     themes_df = _read_parquet(themes_fp)
+#     meso_df = _read_parquet(meso_fp)
+#     return stance_df, themes_df, meso_df
 
-stance_df, themes_df, meso_df = load_parquets(STANCE_PATH, THEMES_PATH, MESO_PATH)
+# stance_df, themes_df, meso_df = load_parquets(STANCE_PATH, THEMES_PATH, MESO_PATH)
+stance_df, themes_df, meso_df = load_parquets()
 
 if stance_df.empty and themes_df.empty and meso_df.empty:
     st.error(f"No aggregates found in {DATA_DIR}. Make sure stance_monthly.parquet, themes_monthly.parquet, meso_monthly.parquet exist.")

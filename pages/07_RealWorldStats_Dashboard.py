@@ -5,31 +5,22 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 from scipy.interpolate import PchipInterpolator
+from lib.sidebar_style import apply_sidebar_names
+apply_sidebar_names()
 
 st.set_page_config(page_title="Real-World Stats Dashboard", layout="wide")
 
-from lib.sidebar_style import apply_sidebar_names
 from lib.real_world_stats import load_real_world_data, DATASETS_METADATA, DEFAULT_NARRATIVES, DEFAULT_INCLUDED_CATEGORIES
 
-apply_sidebar_names()
 st.title("**Real-World Stats on Migration** (next to narratives)")
 
 # -------------------------------------
 # Load Precomputed Narrative Aggregates 
 # -------------------------------------
-DATA_DIR = os.path.expanduser("./data")
-def load_parquets():
-    def _read(name):
-        fp = os.path.join(DATA_DIR, name)
-        if not os.path.exists(fp): return pd.DataFrame()
-        df = pd.read_parquet(fp)
-        if "month" in df.columns:
-            df["month"] = pd.to_datetime(df["month"] + "-01", errors="coerce")
-            df["year"] = df["month"].dt.year
-        return df
-    return _read("stance_monthly.parquet"), _read("themes_monthly.parquet"), _read("meso_monthly.parquet")
-
+from lib.data_loader import load_parquets
 stance_df, themes_df, meso_df = load_parquets()
+
+DATA_DIR = os.path.expanduser("./data")
 if stance_df.empty and themes_df.empty and meso_df.empty:
     st.error(f"No aggregates found in {DATA_DIR}. Ensure parquets exist.")
     st.stop()
@@ -154,8 +145,9 @@ def get_smoothed_curves(x_vals, y_vals):
         x_sm, y_sm = x_pts, y_vals
     return x_pts, y_vals, x_sm, y_sm
 
-def fetch_narrative_evolution(domains, n_type, n_name):
-    df_base = themes_df if n_type == "theme" else meso_df
+
+@st.cache_data(show_spinner=False)
+def fetch_narrative_evolution(domains, n_type, n_name, selected_model, selected_version, time_range, y_axis_metric, df_base, stance_base):
     col = "theme" if n_type == "theme" else "meso_narrative"
     
     t = df_base[
@@ -172,12 +164,12 @@ def fetch_narrative_evolution(domains, n_type, n_name):
     grouped = t.groupby("year")["count"].sum().reset_index()
 
     if "Percentage" in y_axis_metric:
-        s = stance_df[
-            (stance_df["model"] == selected_model) &
-            (stance_df["source_domain"].isin(domains)) &
-            (stance_df["year"] >= time_range[0]) & 
-            (stance_df["year"] <= time_range[1]) &
-            (stance_df["stance"].isin(["OPEN", "RESTRICTIVE", "NEUTRAL"]))
+        s = stance_base[
+            (stance_base["model"] == selected_model) &
+            (stance_base["source_domain"].isin(domains)) &
+            (stance_base["year"] >= time_range[0]) & 
+            (stance_base["year"] <= time_range[1]) &
+            (stance_base["stance"].isin(["OPEN", "RESTRICTIVE", "NEUTRAL"]))
         ].copy()
         s_g = s.groupby("year")["count"].sum().reset_index().rename(columns={"count": "total_m"})
         out = grouped.merge(s_g, on="year", how="left")
@@ -188,7 +180,8 @@ def fetch_narrative_evolution(domains, n_type, n_name):
 
     return out.sort_values("year")
 
-def draw_dual_chart(domains_list):
+@st.cache_resource(show_spinner=False)
+def draw_dual_chart(domains_list, selected_categories, selected_themes, selected_mesos, time_range, selected_rw_stat, y_axis_metric, narr_y_min, narr_y_max, rw_data_slice, df_themes, df_meso, df_stance, selected_model, selected_version):
     fig, ax1 = plt.subplots(figsize=(11, 6))
     fig.patch.set_facecolor('#ffffff')
     ax1.set_facecolor('#ffffff')
@@ -198,12 +191,9 @@ def draw_dual_chart(domains_list):
     ax1.spines['top'].set_visible(False)
     ax1.spines['right'].set_visible(False)
     
-    # Prettier subtle horizontal grid
-    # ax1.grid(True, axis='y', linestyle=':', alpha=0.6, color='gray', zorder=0) 
-
     # Left Axis: Real World Stats
-    if not rw_data.empty and len(selected_categories) > 0:
-        s_slice = rw_data.loc[(rw_data.index >= time_range[0]) & (rw_data.index <= time_range[1])]
+    if not rw_data_slice.empty and len(selected_categories) > 0:
+        s_slice = rw_data_slice.loc[(rw_data_slice.index >= time_range[0]) & (rw_data_slice.index <= time_range[1])]
         
         stat_colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#8c564b", "#e377c2", "#17becf", "#bcbd22"] 
         style_idx = 0
@@ -253,7 +243,11 @@ def draw_dual_chart(domains_list):
     items_to_plot = [("theme", t) for t in selected_themes] + [("meso", m) for m in selected_mesos]
 
     for n_type, n_name in items_to_plot:
-        df_n = fetch_narrative_evolution(domains_list, n_type, n_name)
+        
+        df_base = df_themes if n_type == "theme" else df_meso
+        
+        df_n = fetch_narrative_evolution(domains_list, n_type, n_name, selected_model, selected_version, time_range, y_axis_metric, df_base, df_stance)
+        
         if not df_n.empty:
             c_color = narrative_colors[color_idx % len(narrative_colors)]
             color_idx += 1
@@ -298,15 +292,20 @@ def draw_dual_chart(domains_list):
 
 col1, col2 = st.columns(2)
 
+# Pass scalar parameters into cache
+_narr_y_min = narr_y_min if "Percentage" in y_axis_metric else 0
+_narr_y_max = narr_y_max if "Percentage" in y_axis_metric else 0
+
+
 with col1:
     st.markdown("##### **Source Domains** - Chart 1 (Default: *Left-Leaning Media*)")
     doms_1 = st.multiselect("Source Domains", options=all_domains, default=UK_LEFT, key="dom1_sel", label_visibility="collapsed")
-    if doms_1: st.pyplot(draw_dual_chart(doms_1))
+    if doms_1: st.pyplot(draw_dual_chart(tuple(doms_1), tuple(selected_categories), tuple(selected_themes), tuple(selected_mesos), time_range, selected_rw_stat, y_axis_metric, _narr_y_min, _narr_y_max, rw_data, themes_df, meso_df, stance_df, selected_model, selected_version))
 
 with col2:
     st.markdown("##### **Source Domains** - Chart 2 (Default: *Right-Leaning Media*)")
     doms_2 = st.multiselect("Source Domains", options=all_domains, default=UK_RIGHT, key="dom2_sel", label_visibility="collapsed")
-    if doms_2: st.pyplot(draw_dual_chart(doms_2))
+    if doms_2: st.pyplot(draw_dual_chart(tuple(doms_2), tuple(selected_categories), tuple(selected_themes), tuple(selected_mesos), time_range, selected_rw_stat, y_axis_metric, _narr_y_min, _narr_y_max, rw_data, themes_df, meso_df, stance_df, selected_model, selected_version))
 
 st.markdown("---")
 col3, col4 = st.columns(2)
@@ -314,12 +313,12 @@ col3, col4 = st.columns(2)
 with col3:
     st.markdown("##### **Source Domains** - Chart 3 (Default: *Labour Party*)")
     doms_3 = st.multiselect("Source Domains", options=all_domains, default=UK_LABOUR, key="dom3_sel", label_visibility="collapsed")
-    if doms_3: st.pyplot(draw_dual_chart(doms_3))
+    if doms_3: st.pyplot(draw_dual_chart(tuple(doms_3), tuple(selected_categories), tuple(selected_themes), tuple(selected_mesos), time_range, selected_rw_stat, y_axis_metric, _narr_y_min, _narr_y_max, rw_data, themes_df, meso_df, stance_df, selected_model, selected_version))
 
 with col4:
     st.markdown("##### **Source Domains** - Chart 4 (Default: *Conservative Party*)")
     doms_4 = st.multiselect("Source Domains", options=all_domains, default=UK_CONS, key="dom4_sel", label_visibility="collapsed")
-    if doms_4: st.pyplot(draw_dual_chart(doms_4))
+    if doms_4: st.pyplot(draw_dual_chart(tuple(doms_4), tuple(selected_categories), tuple(selected_themes), tuple(selected_mesos), time_range, selected_rw_stat, y_axis_metric, _narr_y_min, _narr_y_max, rw_data, themes_df, meso_df, stance_df, selected_model, selected_version))
 
 # -------------------------------
 # Footer logic and metadata
