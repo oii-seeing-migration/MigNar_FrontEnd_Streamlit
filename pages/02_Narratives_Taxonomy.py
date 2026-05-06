@@ -540,7 +540,8 @@ with st.form(key="annotation_form", clear_on_submit=False):
             st.markdown("<small>&nbsp;</small>", unsafe_allow_html=True)
 
         # Meso narratives
-        for mn in base_list + extras:
+        # Meso narratives
+        for mn in list(dict.fromkeys(base_list + extras)):
             cnt = counts.get((theme, mn), 0)
             is_new = (mn in extras) or new_theme or (mn not in base_list and not in_tax)
             row_bg = "#fafafa" if not is_new else "#fff8e1"
