@@ -7,6 +7,10 @@ STANCE_PATH = os.path.join(DATA_DIR, "stance_monthly.parquet")
 THEMES_PATH = os.path.join(DATA_DIR, "themes_monthly.parquet")
 MESO_PATH = os.path.join(DATA_DIR, "meso_monthly.parquet")
 
+# Set to True to drop all data before 2016 to save memory
+FILTER_PRE_2016 = True
+
+
 @st.cache_data(ttl="24h", show_spinner=True, max_entries=1)
 def load_parquets():
     def _read_parquet(fp: str) -> pd.DataFrame:
@@ -18,6 +22,10 @@ def load_parquets():
         if "month" in df.columns:
             df["month"] = pd.to_datetime(df["month"] + "-01", errors="coerce")
             df["year"] = df["month"].dt.year
+            # --- MEMORY SAVER: Filter out pre-2016 data ---
+        if FILTER_PRE_2016:
+            df = df[df["year"] >= 2016]
+
         if "source_domain" in df.columns:
             df["source_domain"] = df["source_domain"].fillna("").astype(str)
         if "model" in df.columns:
