@@ -11,7 +11,7 @@ To run this application locally on a Linux environment, follow these steps:
 
 1. **Clone the repository:**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/oii-seeing-migration/MigNar_FrontEnd_Streamlit
    cd MigNar_FrontEnd_Streamlit
 
 2. **Set up a virtual environment:**
