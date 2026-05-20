@@ -99,9 +99,31 @@ def apply_sidebar_names():
 def apply_app_anonymize():
     st.markdown("""
     <style>
-        #MainMenu { visibility: hidden; }
-        footer { visibility: hidden; }
-        header { visibility: hidden; }
-        [data-testid="stToolbar"] { visibility: hidden; }
+        /* Hide the hamburger menu */
+        #MainMenu { visibility: hidden !important; }
+        
+        /* Hide the Streamlit default footer */
+        footer { visibility: hidden !important; }
+        
+        /* Hide the top header bar (stops "Manage app" and Deploy buttons) */
+        header { visibility: hidden !important; }
+        
+        /* Hide the Streamlit toolbar (top right) */
+        [data-testid="stToolbar"] { visibility: hidden !important; }
+
+        /* HIDE THE CREATOR AVATAR (Specific to Streamlit Cloud deployments) */
+        [data-testid="appCreatorAvatar"] {
+            display: none !important;
+        }
+
+        /* HIDE THE "MADE WITH STREAMLIT" CLOUD BADGE (Bottom right corner) */
+        a[href="https://streamlit.io/cloud"] {
+            display: none !important;
+        }
+        
+        /* General safety catch for the profile image specifically */
+        img[alt="App Creator Avatar"] {
+            display: none !important;
+        }
     </style>
     """, unsafe_allow_html=True)
