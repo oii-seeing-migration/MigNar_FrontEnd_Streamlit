@@ -180,7 +180,7 @@ def fetch_narrative_evolution(domains, n_type, n_name, selected_model, selected_
 
     return out.sort_values("year")
 
-@st.cache_resource(show_spinner=False)
+# @st.cache_resource(show_spinner=False)
 def draw_dual_chart(domains_list, selected_categories, selected_themes, selected_mesos, time_range, selected_rw_stat, y_axis_metric, narr_y_min, narr_y_max, rw_data_slice, df_themes, df_meso, df_stance, selected_model, selected_version):
     fig, ax1 = plt.subplots(figsize=(11, 6))
     fig.patch.set_facecolor('#ffffff')
