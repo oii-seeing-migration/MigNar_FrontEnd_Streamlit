@@ -24,3 +24,4 @@ plots_for_paper
 data/validation
 # data/real-stats
 validation.ipynb
+paper_figures/.chrome/
