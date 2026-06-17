@@ -10,7 +10,7 @@ The repo also contains a few codes for generating the plots and numeric results 
 
 - **`navigation_page.py`**: The login page of the app. It's also the main script of the app meaning that Streamlit Cloud identifies the app based on it. This, **it should not be renamed**.
 - **`pages/`**: The directory containing all the pages in the app. Each script is a separate page. Read the `pages/00_App_Instructions.py` for page by page explanation.
-- **`taxonomy/meso_narratives_revision_[0|1|2].py`**: The narratives taxonomy, all versions. It's in dict format, where the `themes` are the `keys` and `values` are lists of `\[meso-narrative, natural stance of the narrative\]`.
+- **`taxonomy/meso_narratives_revision_[0|1|2].py`**: The narratives taxonomy, all versions. It's in dict format, where the `themes` are the `keys` and `values` are lists of `[meso-narrative, natural stance of the narrative]`.
 - **`data/`**: `data/stance_monthly.parquet`, `data/themes_monthly.parquet`, `data/meso_monthly.parquet` monthly aggregates of the narratives/stances created by the backend of the project. They are the backbone of all the plots in this repo/app. I have the aggregates to post-2016 to make the app lighter and avoid crashes. Later, you can change it in `lib/data_loader.py`.
 `data/meso_samples.parquet` is sample of documents per meso-narrative used for the page `pages/03_Narratives_on_Articles.py` to visualise the detected narratives on documents. `data/real-stats/` contains real-world migration-related stats in the UK used in the page `pages/07_RealWorldStats_Dashboard.py`.
 - **`.streamlit/`**: The directory for essential settings files. `.streamlit/config.toml` configures some Streamlit built-in settings such as theme colour.
