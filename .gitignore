@@ -21,9 +21,9 @@ pages/test.*.ipynb
 
 plots_for_paper
 .sessions/*
-data/validation
+# data/validation
 # data/real-stats
-validation.ipynb
+# validation.ipynb
 paper_figures/.chrome/
 
-validation_and_model_comparison.ipynb
+# validation_and_model_comparison.ipynb
